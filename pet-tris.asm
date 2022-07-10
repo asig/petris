@@ -43,8 +43,8 @@ vram_stats_t_o      .equ    vram + 19 * scr_w + 32
 
 
 ; Zeropage addresses used to pass params
-word1    .equ    $b8
-word2    .equ    $ba
+word1    .equ    $54 ; $b8
+word2    .equ    $56 ; $ba
 
 
 ; Playfield consts
@@ -58,13 +58,17 @@ pf_h    .equ    22
 
     .include "startup.i"
 
-    jsr init_scores
+    jsr init_random
+    jsr init_scores_and_next_tetromino
     jsr init_screen
 
 
     jsr print_scores
+    jsr print_stats
+    jsr print_next_tetromino
     jsr draw_playfield
 
+    jsr new_tetromino
 
     rts
 
@@ -79,13 +83,21 @@ pf_h    .equ    22
 ; *** Init
 ; ********************************************************************
 
-init_scores:
-    rts
-    ldx #(9*2)    ; 9x16 bit    
+init_scores_and_next_tetromino:
+    ; Clear all the scores and stats
+    ldx #(9*2)-1    ; 9x16 bit    
     lda #0
 _l  sta score,x
     dex
     bpl _l
+
+    ; init next tetromino
+    jsr random
+    and #7
+    cmp #7
+    bne _l2
+    and #%110
+_l2 sta next_tetromino
     rts
 
 init_screen:
@@ -153,8 +165,9 @@ print_scores:
 
     set16m word1, lines
     set16i word2, vram_stats_lines
-    jsr print_uint16
+    jmp print_uint16
 
+print_stats:
     set16m word1, stats
     set16i word2, vram_stats_t_i
     ldy #4  ; 3 digits
@@ -190,6 +203,15 @@ print_scores:
     ldy #4  ; 3 digits
     jmp print_uint16_lp1
 
+print_next_tetromino:
+    lda next_tetromino
+    asl
+    tax
+    lda tetromino_preview,x
+    sta vram_stats_next
+    lda tetromino_preview+1,x
+    sta vram_stats_next+1
+    rts
 
 ; ********************************************************************
 ; *** Playfield routines
@@ -207,13 +229,8 @@ _l2 lda (word1),y
     dey
     bpl _l2
 
-    lda word2
-    clc
-    adc #scr_w
-    sta word2
-    lda word2+1
-    adc #0
-    sta word2+1
+    add16i word1, pf_w
+    add16i word2, scr_w
 
     dex
     bne _l1
@@ -238,13 +255,52 @@ _l  sta (word1),y
 ; *** Tetromino routines
 ; ********************************************************************
 
+; Copy "next_tetromino" to cur_tetromino, and select new next tetromino
+; Update stats and next_tetromino
+new_tetromino:
+    lda next_tetromino
+    asl
+
+    ; Copy tetromino:
+    ; ...copy source address to word1
+    tax
+    lda tetrominos,x
+    sta word1
+    lda tetrominos+1,x
+    sta word1+1
+
+    ; ...copy dest address to word2
+    set16i word2, cur_tetromino
+
+    ; ...finally copy 18 bytes
+    ldy #4*4+2
+    jsr copy_mem
+
+    ; Update stats
+    clc
+    inc stats,x
+    bcc _nooverflow
+    inc stats+1,x
+_nooverflow
+
+    ; Pick a new tetromino
+    jsr random
+_l  cmp #7
+    bcc _done ; less than 7 -> we're good
+    sbc #7     
+    jmp _l
+_done
+    sta next_tetromino
+    jsr print_stats
+    jmp print_next_tetromino
+    
+
 rotate_cur_left:
     rts
 
 rotate_cur_right:
     rts
 
-buf_to_cur:
 
 rotate_buf:
     .reserve 16
@@ -256,6 +312,27 @@ rotate_buf:
     .include "random.asm"
 
 
+; ====================================================================
+; ==
+; == copy non-overlapping memory block
+; ==
+; == Input: word1: source
+; ==        word2: dest
+; ==        Y: # of bytes to copy (must be > 0)
+; ==
+; == Output: -
+; ==
+; == Invalidates A, Y
+; ====================================================================
+copy_mem:
+    dey
+_l  lda (word1),y
+    sta (word2),y
+    dey
+    bne _l
+    lda (word1),y
+    sta (word2),y
+    rts
 
 ; ====================================================================
 ; ==
@@ -264,6 +341,8 @@ rotate_buf:
 ; == Input: word1: The number to print
 ; ==        word2: The screen address to print it to
 ; ==        [ jumping to xxx_lp1: Y: (number of digits)*2-2, eg 8 for 5 digits ]
+; ==
+; == Output: -
 ; ==
 ; == Invalidates A, X, Y
 ; ====================================================================
@@ -331,74 +410,78 @@ _tens
 ; *** Variables
 ; ********************************************************************
 
+; Scores 
 score:  .reserve 2
 lines:  .reserve 2
-stats:  .reserve 7*2    ; Same order as in "tetriminos" list
-
+stats:  .reserve 7*2    ; Same order as in "tetrominos" list
 
 playfield:
     .reserve pf_w*pf_h , scr('A')
 
-cur_tetrimino_x:
-    .reserve 1
-
-cur_tetrimino_y:
-    .reserve 1
-
-cur_tetrimino:
-    .reserve 1+1+6  ; 2 bytes for size, and max 6 bytes for data
+cur_tetromino_x:    .reserve 1
+cur_tetromino_y:    .reserve 1
+cur_tetromino:      .reserve 1+1+4*4    ; 2 bytes for size, and 16 bytes for data
+next_tetromino:     .reserve 1
 
 ; ********************************************************************
 ; *** Static data
 ; ********************************************************************
 
-tetriminos:
-    .word  tetrimino_i, tetrimino_z, tetrimino_s, tetrimino_t, tetrimino_j, tetrimino_l, tetrimino_o
+tetromino_preview: ; 2-byte tetromino previews in screen codes
+    .byte $62,$62 ; "I" tetromino
+    .byte $7C,$FC ; "Z" tetromino
+    .byte $6C,$EC ; "S" tetromino
+    .byte $6C,$FC ; "T" tetromino
+    .byte $76,$62 ; "J" tetromino
+    .byte $6C,$FE ; "L" tetromino
+    .byte $E1,$61 ; "O" tetromino
 
+tetrominos:
+    .word  tetromino_i, tetromino_z, tetromino_s, tetromino_t, tetromino_j, tetromino_l, tetromino_o
 
-tetrimino_i:
+tetromino_i:
     .byte 4,1
     .byte 0,0,0,0
     .byte 1,1,1,1
     .byte 0,0,0,0
     .byte 0,0,0,0
 
-tetrimino_z:
+tetromino_z:
     .byte 3,2
     .byte 0,0,0,0
     .byte 1,1,0,0
     .byte 0,1,1,0
     .byte 0,0,0,0
 
-tetrimino_s:
+tetromino_s:
     .byte 3,2
     .byte 0,0,0,0
     .byte 0,1,1,0
     .byte 1,1,0,0
     .byte 0,0,0,0
 
-tetrimino_t:
+tetromino_t:
     .byte 3,2
     .byte 0,0,0,0
     .byte 0,1,0,0
     .byte 1,1,1,0
     .byte 0,0,0,0
 
-tetrimino_j:
+tetromino_j:
     .byte 3,2
     .byte 0,0,0,0
     .byte 1,0,0,0
     .byte 1,1,1,0
     .byte 0,0,0,0
 
-tetrimino_l:
+tetromino_l:
     .byte 3,2
     .byte 0,0,0,0
     .byte 0,0,1,0
     .byte 1,1,1,0
     .byte 0,0,0,0
 
-tetrimino_o:
+tetromino_o:
     .byte 2,2
     .byte 0,0,0,0
     .byte 0,1,1,0
