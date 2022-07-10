@@ -1,5 +1,15 @@
 ; from https://gist.github.com/bhickey/0de228c02cc60b5965582d2d946d8c38,
 ; based on http://www.retroprogramming.com/2017/07/xorshift-pseudorandom-numbers-in-z80.html
+
+; ====================================================================
+; ==
+; == Initialize RNG
+; ==
+; == Input: -
+; == Output: -
+; == Invalidates: A
+; ====================================================================
+
 init_random:
         lda $d012   ; Initialize rnd with current rasterline
         bne _l      ; but make sure we don't use 0.
@@ -11,12 +21,9 @@ _l      sta rndval
 ; == Get the next random number
 ; ==
 ; == Input: -
-; ==
 ; == Output: A: random number
-; ==
 ; == Invalidates A
 ; ====================================================================
-
 
 random:
         lda rndval
