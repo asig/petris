@@ -6,6 +6,18 @@ init_random:
         lda #1
 _l      sta rndval
 
+; ====================================================================
+; ==
+; == Get the next random number
+; ==
+; == Input: -
+; ==
+; == Output: A: random number
+; ==
+; == Invalidates A
+; ====================================================================
+
+
 random:
         lda rndval
         asl a
