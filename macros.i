@@ -29,3 +29,12 @@ add16i  .macro addr, val
         sta addr+1
         .endm
 
+sub16i  .macro addr, val
+        sec
+        lda addr
+        sbc #<(val)
+        sta addr
+        lda addr+1
+        sbc #>(val)
+        sta addr+1
+        .endm
