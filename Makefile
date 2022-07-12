@@ -1,6 +1,7 @@
-SOURCES = pet-tris.asm
-
-PROGRAM = pet-tris
+MAIN_SOURCE = petris.asm
+SOURCES = ${MAIN_SOURCE} random.asm screens.asm
+PROGRAM = petris.prg
+SYMTAB = petris.sym
 
 # CC = cc65
 # AS = ca65
@@ -18,13 +19,13 @@ PROGRAM = pet-tris
 .PRECIOUS: %.s
 
 
-all: pet-tris.prg
+all: ${PROGRAM}
 
 clean:
-	$(RM) pet-tris.prg
+	$(RM) ${PROGRAM}
 
-run: pet-tris.prg
-	xpet -model 2001 pet-tris.prg
+run: ${PROGRAM}
+	xpet >/dev/null -model 2001 ${PROGRAM}
 
-pet-tris.prg: pet-tris.asm
-	cbmasm -listing pet-tris.asm pet-tris.prg
+${PROGRAM}: ${SOURCES}
+	cbmasm -listing  -labels ${SYMTAB} ${MAIN_SOURCE} ${PROGRAM}
