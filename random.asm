@@ -10,11 +10,17 @@
 ; == Invalidates: A
 ; ====================================================================
 
+	.if PLATFORM = "pet"
+rnd_src	.equ $202	; jiffy clock LSB
+	.else ; Just assume that it's C64 or C128
+rnd_src	.equ $d012	; current raster line
+	.endif
+
 init_random:
-        lda $d012   ; Initialize rnd with current rasterline
+        ldx rnd_src ; Initialize rnd from current source of randomness
         bne _l      ; but make sure we don't use 0.
-        lda #1
-_l      sta rndval
+        inx
+_l      stx rndval
 
 ; ====================================================================
 ; ==
