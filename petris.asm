@@ -16,6 +16,8 @@
 ; along with cbmasm.  If not, see <http://www.gnu.org/licenses/>.
 ;
 
+DEBUG	.equ 1
+
 	.platform "pet"
 	.cpu "6502"
 
@@ -23,7 +25,7 @@
 
 
 ; ********************************************************************
-; *** Constants
+; *** Constants and memory addresses
 ; ********************************************************************
 
 scr_w   .equ    40
@@ -41,6 +43,10 @@ vram_stats_t_j      .equ    vram + 19 * scr_w + 25
 vram_stats_t_l      .equ    vram + 17 * scr_w + 32
 vram_stats_t_o      .equ    vram + 19 * scr_w + 32
 
+via	.equ $E840
+via_portb	.equ via
+
+curkey	.equ $203
 
 ; Zeropage addresses used to pass params
 word1   .equ    $54 ; $b8
@@ -48,11 +54,20 @@ word2   .equ    $56 ; $ba
 byte1   .equ    $58
 byte2   .equ    $59
 
-
 ; Playfield consts
 pf_w    .equ    10
 pf_h    .equ    22
 
+; Key codes
+key_left	.equ 48 ; 'A' key
+key_right	.equ 47	; 'D' key
+key_down	.equ 44	; 'S' key
+key_rotate	.equ 27	; Return key
+key_pause	.equ 52	; 'P' key
+key_quit	.equ 4	; Run/stop key
+
+; Default initial fall delay
+inital_fall_delay	.equ	30
 
 ; ********************************************************************
 ; *** ENTRY POINT
@@ -61,30 +76,146 @@ pf_h    .equ    22
 	.include "startup.i"
 
 	jsr init_random
+	jmp main_game
+	rts
+
+
+; ********************************************************************
+; *** MAIN GAME LOOP
+; ********************************************************************
+last_key	.reserve 1
+main_game:
 	jsr init_scores_and_next_tetromino
 	jsr init_playfield
 	jsr init_screen
+	jsr new_tetromino
+	lda #inital_fall_delay
+	sta cur_fall_delay
+	sta cur_fall_cnt
 
+	lda #$ff
+	sta last_key
 
+_loop
+	jsr wait_vbl
+
+	lda curkey
+	cmp last_key
+	beq _cont	; Same key still pressed
+	sta last_key
+	cmp #$ff
+	beq _cont	; No key pressed
+
+	; Key pressed: Handle it!
+	cmp #key_left
+	bne _c1
+	jsr handle_left
+	jmp _cont
+_c1	cmp #key_right
+	bne _c2
+	jsr handle_right
+	jmp _cont
+_c2	cmp #key_down
+	bne _c3
+	jsr handle_down
+_c3	cmp #key_rotate
+	bne _c4
+	jsr handle_rotate
+	jmp _cont
+_c4	cmp #key_pause
+	bne _c5
+	jsr handle_pause
+	jmp _cont
+_c5	cmp #key_quit
+	bne _c6
+	jsr handle_quit
+	bcc _cont
+	; TODO jump title
+
+_c6
+_cont
+	.ifdef DEBUG
+	; print out key
+	lda last_key
+	sta word1
+	lda #0
+	sta word1+1
+	set16i word2, vram
+	ldy #4  ; 3 digits
+	jsr print_uint16_lp1
+	.endif
+
+	; Update scores and stats
 	jsr print_scores
 	jsr print_stats
 	jsr print_next_tetromino
+
+	jsr set_tetromino_in_pf
 	jsr draw_playfield
+	jsr remove_tetromino_from_pf
 
-	jsr new_tetromino
+	.ifdef DEBUG
+	; print out tetromino pos
+	lda cur_tetromino_x
+	sta word1
+	lda #0
+	sta word1+1
+	set16i word2, vram+scr_w
+	ldy #4  ; 3 digits
+	jsr print_uint16_lp1
 
-	jsr rotate_cur_left
-	ldx #3
-	ldy #4    
-	jsr draw_cur_tetromino
+	lda cur_tetromino_y
+	sta word1
+	lda #0
+	sta word1+1
+	set16i word2, vram+scr_w + 4
+	ldy #4  ; 3 digits
+	jsr print_uint16_lp1
+	.endif 
 
+	jmp _loop
+
+;	jsr print_scores
+;	jsr print_stats
+;	jsr print_next_tetromino
+;
+;	jsr set_tetromino_in_pf
+;	jsr draw_playfield
+;	jsr remove_tetromino_from_pf
+;
+;	rts
+
+
+handle_left:
+	dec cur_tetromino_x
+	jsr test_tetromino_fits
+	bcs _nofit
+	rts
+_nofit
+	inc cur_tetromino_x
 	rts
 
-	lda #$53
-	sta $8000
-	sta $8001
-	sta $8002
-	jsr draw_playfield
+handle_right:
+	inc cur_tetromino_x
+	jsr test_tetromino_fits
+	bcs _nofit
+	rts
+_nofit
+	dec cur_tetromino_x
+	rts
+
+handle_down:
+	rts
+
+handle_rotate:
+	rts
+
+handle_pause:
+	rts
+
+handle_quit:
+	; Set C flag to signal "quit"
+	sec
 	rts
 
 ; ********************************************************************
@@ -229,17 +360,16 @@ draw_cur_tetromino_set  .macro
 _l  iny
 	.endm
 
+
 ; Draws the current tetromino (cur_tetromino) on screen
-; Input:
-;   X: x-coord (within playfield)
-;   Y: y-coord (within playfield)
+; at (cur_tetromino_x, cur_tetromino_y)
+; Input: -
 draw_cur_tetromino:
 	; compute screen address
-	set16i word1, vram_playfield-scr_w  ; Compensate y for center being at (1,1)
-	
+	set16i word1, vram_playfield
+
 	; add col offset
-	dex     ; Compensate x for center being at (1,1)
-	txa
+	lda cur_tetromino_x
 	clc
 	adc word1
 	sta word1
@@ -247,10 +377,9 @@ draw_cur_tetromino:
 	adc word1+1
 	sta word1+1
 
-	tya
-	jsr mul40
-
 	; add row offset
+	lda cur_tetromino_y
+	jsr mul40
 	txa
 	clc
 	adc word1
@@ -258,6 +387,12 @@ draw_cur_tetromino:
 	tya
 	adc word1+1
 	sta word1+1
+
+	.ifdef DEBUG
+	set16m tmp, word1
+	.endif
+
+	sub16i word1, scr_w+1	; compensate for origin being at (1,1)
 
 	set16i word2, cur_tetromino
 
@@ -268,6 +403,123 @@ _l  ldy #0
 	draw_cur_tetromino_set
 	draw_cur_tetromino_set
 	add16i word1, scr_w
+	add16i word2, 4
+	dex
+	bne _l
+
+	.ifdef DEBUG
+	set16m word1, tmp
+	ldy #0
+	lda #$53
+	sta (word1),y
+	.endif
+
+	rts
+
+
+
+set_tetromino_in_pf_elem  .macro
+	lda (word2),y
+	beq _l
+	sta (word1), y
+_l  iny
+	.endm
+
+	.ifdef DEBUG
+tmp .reserve 2
+	.endif
+
+; Sets the current tetromino (cur_tetromino) in the playfield
+; at (cur_tetromino_x, cur_tetromino_y). No checks are performed
+; whether it fits.
+; Input: -
+set_tetromino_in_pf:
+	; compute pf address
+	set16i word1, playfield+2*(pf_w+4)+2	; 2-byte sentinels around the whole playfield
+	
+	; add col offset
+	lda cur_tetromino_x
+	clc
+	adc word1
+	sta word1
+	lda #0
+	adc word1+1
+	sta word1+1
+
+	; add row offset
+	lda cur_tetromino_y
+	jsr mulPlayfieldW
+	txa
+	clc
+	adc word1
+	sta word1
+	tya
+	adc word1+1
+	sta word1+1
+
+	sub16i word1, (pf_w+4)+1	; compensate for origin being at (1,1)
+	set16i word2, cur_tetromino
+
+	ldx #4  ; 4 rows
+_l  ldy #0
+	set_tetromino_in_pf_elem
+	set_tetromino_in_pf_elem
+	set_tetromino_in_pf_elem
+	set_tetromino_in_pf_elem
+	add16i word1, pf_w+4
+	add16i word2, 4
+	dex
+	bne _l
+
+	rts
+
+remove_tetromino_from_pf_elem  .macro
+	lda (word2),y
+	beq _l
+	lda #0
+	sta (word1), y
+_l  iny
+	.endm
+
+
+; Removes the current tetromino (cur_tetromino) from the playfield
+; at (cur_tetromino_x, cur_tetromino_y). No checks are performed
+; whether it fits.
+; Input: -
+remove_tetromino_from_pf:
+	; compute pf address
+	set16i word1, playfield+2*(pf_w+4)+2	; 2-byte sentinels around the whole playfield
+	
+	; add col offset
+	lda cur_tetromino_x
+	clc
+	adc word1
+	sta word1
+	lda #0
+	adc word1+1
+	sta word1+1
+
+	; add row offset
+	lda cur_tetromino_y
+	jsr mulPlayfieldW
+	txa
+	clc
+	adc word1
+	sta word1
+	tya
+	adc word1+1
+	sta word1+1
+
+	sub16i word1, (pf_w+4)+1	; compensate for origin being at (1,1)
+	set16i word2, cur_tetromino
+
+	ldx #4  ; 4 rows
+_l  ldy #0
+	remove_tetromino_from_pf_elem
+	remove_tetromino_from_pf_elem
+	remove_tetromino_from_pf_elem
+	remove_tetromino_from_pf_elem
+	add16i word1, pf_w+4
 	add16i word2, 4
 	dex
 	bne _l
@@ -302,7 +554,7 @@ _cl
 	jmp clear_playfield
 
 draw_playfield:
-	set16i word1, playfield+2*(pf_w+2+2)+2  ; skip 1st 2 rows, skip 2 cols (sentinels)
+	set16i word1, playfield+2*(pf_w+4)+2  ; skip 1st 2 rows, skip 2 cols (sentinels)
 	set16i word2, vram_playfield
 
 	ldx #pf_h
@@ -341,6 +593,64 @@ _cl
 	bne _rl
 	rts
 
+test_tetromino_fits_pixel  .macro
+	lda (word2),y
+	and (word1),y
+	beq _l
+	; Tetromino pixel set AND playfield pixel set -> no fit
+	sec
+	rts
+_l  iny
+	.endm
+
+; Tests if the current tetromino (cur_tetromino) fits into the playfield
+; at (cur_tetromino_x, cur_tetromino_y)
+; Input: (coords in cur_tetromino_x, cur_tetromino_y)
+; Output:
+;   C-Flag set: Tetromino does not fit
+;   C-Flag cleared: Tetromino fits
+test_tetromino_fits:
+	; compute pf address
+	set16i word1, playfield+2*(pf_w+4)+2	; 2-byte sentinels around the whole playfield
+	
+	; add col offset
+	lda cur_tetromino_x
+	clc
+	adc word1
+	sta word1
+	lda #0
+	adc word1+1
+	sta word1+1
+
+	; add row offset
+	lda cur_tetromino_y
+	jsr mulPlayfieldW
+	txa
+	clc
+	adc word1
+	sta word1
+	tya
+	adc word1+1
+	sta word1+1
+
+	sub16i word1, (pf_w+4)+1	; compensate for origin being at (1,1)
+	set16i word2, cur_tetromino
+
+	ldx #4  ; 4 rows
+_l  ldy #0
+	test_tetromino_fits_pixel
+	test_tetromino_fits_pixel
+	test_tetromino_fits_pixel
+	test_tetromino_fits_pixel
+	add16i word1, pf_w+4
+	add16i word2, 4
+	dex
+	bne _l
+	
+	; Still here? So it fits!
+	clc
+	rts
+
 ; ********************************************************************
 ; *** Tetromino routines
 ; ********************************************************************
@@ -362,8 +672,8 @@ new_tetromino:
 	; ...copy dest address to word2
 	set16i word2, cur_tetromino
 
-	; ...finally copy 18 bytes
-	ldy #4*4+2
+	; ...finally copy 16 bytes
+	ldy #4*4
 	jsr copy_mem
 
 	; Update stats
@@ -372,6 +682,12 @@ new_tetromino:
 	bcc _nooverflow
 	inc stats+1,x
 _nooverflow
+
+	; set position
+	lda #(pf_w-3)/2
+	sta cur_tetromino_x
+	lda #0
+	sta cur_tetromino_y
 
 	; Pick a new tetromino
 	jsr random
@@ -424,51 +740,51 @@ rotate_cur_left:
 
 	set16i word1, rotate_buf
 	set16i word2, cur_tetromino
-	ldy #16
+	ldy #4*4
 	jmp copy_mem
 
-rotate_cur_right:
-	lda cur_tetromino+0
-	sta rotate_buf+12
-	lda cur_tetromino+1
-	sta rotate_buf+8
-	lda cur_tetromino+2
-	sta rotate_buf+4
-	lda cur_tetromino+3
-	sta rotate_buf+0
-
-	lda cur_tetromino+4
-	sta rotate_buf+13
-	lda cur_tetromino+5
-	sta rotate_buf+9
-	lda cur_tetromino+6
-	sta rotate_buf+5
-	lda cur_tetromino+7
-	sta rotate_buf+1
-
-	lda cur_tetromino+8
-	sta rotate_buf+14
-	lda cur_tetromino+9
-	sta rotate_buf+10
-	lda cur_tetromino+10
-	sta rotate_buf+6
-	lda cur_tetromino+11
-	sta rotate_buf+2
-
-	lda cur_tetromino+12
-	sta rotate_buf+15
-	lda cur_tetromino+13
-	sta rotate_buf+11
-	lda cur_tetromino+14
-	sta rotate_buf+7
-	lda cur_tetromino+15
-	sta rotate_buf+3
-
-	set16i word1, rotate_buf
-	set16i word2, cur_tetromino
-	ldy #16
-	jmp copy_mem
-
+;rotate_cur_right:
+;	lda cur_tetromino+0
+;	sta rotate_buf+12
+;	lda cur_tetromino+1
+;	sta rotate_buf+8
+;	lda cur_tetromino+2
+;	sta rotate_buf+4
+;	lda cur_tetromino+3
+;	sta rotate_buf+0
+;
+;	lda cur_tetromino+4
+;	sta rotate_buf+13
+;	lda cur_tetromino+5
+;	sta rotate_buf+9
+;	lda cur_tetromino+6
+;	sta rotate_buf+5
+;	lda cur_tetromino+7
+;	sta rotate_buf+1
+;
+;	lda cur_tetromino+8
+;	sta rotate_buf+14
+;	lda cur_tetromino+9
+;	sta rotate_buf+10
+;	lda cur_tetromino+10
+;	sta rotate_buf+6
+;	lda cur_tetromino+11
+;	sta rotate_buf+2
+;
+;	lda cur_tetromino+12
+;	sta rotate_buf+15
+;	lda cur_tetromino+13
+;	sta rotate_buf+11
+;	lda cur_tetromino+14
+;	sta rotate_buf+7
+;	lda cur_tetromino+15
+;	sta rotate_buf+3
+;
+;	set16i word1, rotate_buf
+;	set16i word2, cur_tetromino
+;	ldy #4*4
+;	jmp copy_mem
+;
 
 
 rotate_buf:
@@ -497,18 +813,67 @@ mul40:
 	rts
 _multab .word 0,40,80,120,160,200,240,280,320,360,400,440,480,520,560,600,640,680,720,760,800,840,880,920,960
 
-; ====================================================================
-; ==
-; == copy non-overlapping memory block
-; ==
-; == Input: word1: source
-; ==        word2: dest
-; ==        Y: # of bytes to copy (must be > 0)
-; ==
-; == Output: -
-; ==
-; == Invalidates A, Y
-; ====================================================================
+; Multiply accumulator by playfield width including sentinel
+; Input:
+;   A: to by multiplied (0 <= A < pf_h+4)
+; Output:
+;   X: LSB of A*(pf_w+2+2)
+;   Y: MSB of A*(pf_w+2+2)
+mulPlayfieldW:
+	asl
+	tax
+	lda _multab+1,x
+	tay
+	lda _multab,x
+	tax
+	rts
+_multab 
+	.word  0 * (pf_w+2+2)
+	.word  1 * (pf_w+2+2)
+	.word  2 * (pf_w+2+2)
+	.word  3 * (pf_w+2+2)
+	.word  4 * (pf_w+2+2)
+	.word  5 * (pf_w+2+2)
+	.word  6 * (pf_w+2+2)
+	.word  7 * (pf_w+2+2)
+	.word  8 * (pf_w+2+2)
+	.word  9 * (pf_w+2+2)
+	.word 10 * (pf_w+2+2)
+	.word 11 * (pf_w+2+2)
+	.word 12 * (pf_w+2+2)
+	.word 13 * (pf_w+2+2)
+	.word 14 * (pf_w+2+2)
+	.word 15 * (pf_w+2+2)
+	.word 16 * (pf_w+2+2)
+	.word 17 * (pf_w+2+2)
+	.word 18 * (pf_w+2+2)
+	.word 19 * (pf_w+2+2)
+	.word 20 * (pf_w+2+2)
+	.word 21 * (pf_w+2+2)
+	.word 22 * (pf_w+2+2)
+	.word 23 * (pf_w+2+2)
+	.word 24 * (pf_w+2+2)
+	.word 25 * (pf_w+2+2)
+
+; Wait for vertical blanking
+; --------------------------
+; Input: -
+; Output: -
+; Invalidates: A
+wait_vbl:
+_l	lda via_portb
+	and #$20
+	bne _l
+	rts
+
+; Copy non-overlapping memory block
+; ---------------------------------
+; Input: 
+;   word1: source
+;   word2: dest
+;   Y: # of bytes to copy (must be > 0)
+; Output: -
+; Invalidates: A, Y
 copy_mem:
 	dey
 _l  lda (word1),y
@@ -519,19 +884,14 @@ _l  lda (word1),y
 	sta (word2),y
 	rts
 
-; ====================================================================
-; ==
-; == Print 16bit uint (inspired by https://www.beebwiki.mdfs.net/Number_output_in_6502_machine_code)
-; ==
-; == Input: word1: The number to print
-; ==        word2: The screen address to print it to
-; ==        [ jumping to xxx_lp1: Y: (number of digits)*2-2, eg 8 for 5 digits ]
-; ==
-; == Output: -
-; ==
-; == Invalidates A, X, Y
-; ====================================================================
-
+; Print 16bit uint (inspired by https://www.beebwiki.mdfs.net/Number_output_in_6502_machine_code)
+; ----------------
+; Input:
+;   word1: The number to print
+;   word2: The screen address to print it to
+;   [ jumping to xxx_lp1: Y: (number of digits)*2-2, eg 8 for 5 digits ]
+; Output: -
+; Invalidates: A, X, Y
 print_uint16:
 	ldy #8      ; Offset to powers of ten
 print_uint16_lp1
@@ -603,6 +963,8 @@ stats:  .reserve 7*2    ; Same order as in "tetrominos" list
 playfield:
 	.reserve (pf_w+2+2)*(pf_h+2+2) , scr('A')
 
+cur_fall_delay:		.reserve 1	; Current delay per line
+cur_fall_cnt:		.reserve 1	; fall count down; when 0, the tetromino falls down 1 line
 cur_tetromino_x:    .reserve 1
 cur_tetromino_y:    .reserve 1
 cur_tetromino:      .reserve 4*4    ; 16 bytes for data
@@ -674,7 +1036,4 @@ tetromino_o:
 	.byte $00,$00,$00,$00
 
 
-title_screen:
-	.byte $00, $5d, $20, $17, $05, $0c, $03, $0f, $0d, $05, $20, $14, $0f, $00, $40, $20, $e1, $00, $02, $a0, $7b, $00, $02, $a0, $61, $00, $0b, $a0, $61, $00, $11, $20, $e1, $61, $20, $e1, $61, $a0, $00, $03, $20, $e1, $61, $00, $1b, $20, $e1, $00, $02, $a0, $7e, $00, $02, $a0, $61, $20, $e1, $61, $e2, $ec, $7e, $ec, $7f, $7c, $ec, $e1, $e2, $00, $12, $20, $e1, $61, $00, $02, $20, $a0, $00, $03, $20, $e1, $61, $20, $61, $20, $fc, $ff, $20, $61, $e1, $62, $00, $12, $20, $e1, $61, $00, $02, $20, $00, $02, $a0, $61, $20, $e1, $61, $20, $61, $20, $61, $e1, $6c, $fc, $20, $e1, $00, $12, $20, $00, $13, $62, $fe, $00, $67, $20, $03, $0f, $0e, $14, $12, $0f, $0c, $13, $00, $ff, $20, $00, $56, $20, $00, $02, $2a, $20, $10, $12, $05, $00, $01, $13, $20, $01, $0e, $19, $20, $0b, $05, $19, $20, $14, $0f, $20, $13, $14, $01, $12, $14, $20, $00, $02, $2a, $00, $5c, $20, $28, $03, $29, $20, $32, $30, $00, $01, $32, $20, $01, $0e, $04, $12, $05, $01, $13, $20, $13, $09, $07, $0e, $05, $12, $00, $08, $20
-main_screen:
-	.byte $00, $51, $20, $67, $00, $09, $20, $65, $e1, $00, $02, $a0, $7b, $00, $02, $a0, $61, $00, $0b, $a0, $61, $60, $00, $04, $20, $67, $00, $09, $20, $65, $e1, $61, $20, $e1, $61, $a0, $00, $03, $20, $e1, $61, $00, $09, $20, $60, $00, $04, $20, $67, $00, $09, $20, $65, $e1, $00, $02, $a0, $7e, $00, $02, $a0, $61, $20, $e1, $61, $e2, $ec, $7e, $ec, $7f, $7c, $ec, $e1, $e2, $00, $06, $20, $67, $00, $09, $20, $65, $e1, $61, $00, $02, $20, $a0, $00, $03, $20, $e1, $61, $20, $61, $20, $fc, $ff, $20, $61, $e1, $62, $00, $06, $20, $67, $00, $09, $20, $65, $e1, $61, $00, $02, $20, $00, $02, $a0, $61, $20, $e1, $61, $20, $61, $20, $61, $e1, $6c, $fc, $20, $e1, $00, $06, $20, $67, $00, $09, $20, $65, $00, $13, $62, $fe, $00, $06, $20, $67, $00, $09, $20, $65, $00, $1b, $20, $67, $00, $09, $20, $65, $55, $00, $04, $40, $49, $20, $55, $00, $04, $40, $49, $20, $55, $00, $03, $40, $49, $00, $05, $20, $67, $00, $09, $20, $65, $5d, $13, $03, $0f, $12, $05, $5d, $20, $5d, $0c, $09, $0e, $05, $13, $5d, $20, $5d, $0e, $05, $18, $14, $5d, $00, $05, $20, $67, $00, $09, $20, $65, $6b, $00, $04, $40, $73, $20, $6b, $00, $04, $40, $73, $20, $6b, $00, $03, $40, $73, $00, $05, $20, $67, $00, $09, $20, $65, $5d, $00, $04, $20, $5d, $20, $5d, $00, $04, $20, $5d, $20, $5d, $00, $03, $20, $5d, $00, $03, $20, $00, $01, $60, $67, $00, $09, $20, $65, $4a, $00, $04, $40, $4b, $20, $4a, $00, $04, $40, $4b, $20, $4a, $00, $03, $40, $4b, $00, $03, $20, $00, $01, $60, $67, $00, $09, $20, $65, $55, $00, $04, $40, $49, $00, $06, $20, $00, $05, $60, $00, $01, $20, $00, $05, $60, $67, $00, $09, $20, $65, $5d, $13, $14, $01, $14, $13, $5d, $00, $07, $20, $00, $04, $60, $00, $01, $20, $00, $03, $60, $20, $60, $67, $00, $09, $20, $65, $6b, $00, $04, $40, $71, $72, $00, $05, $40, $72, $00, $05, $40, $49, $00, $02, $60, $20, $00, $01, $60, $67, $00, $09, $20, $65, $5d, $00, $01, $62, $00, $03, $20, $5d, $7c, $fc, $00, $03, $20, $5d, $6c, $ec, $00, $03, $20, $5d, $00, $05, $60, $67, $00, $09, $20, $65, $5d, $00, $05, $20, $5d, $00, $05, $20, $5d, $60, $20, $00, $03, $60, $5d, $00, $05, $60, $67, $00, $09, $20, $65, $5d, $6c, $fc, $00, $03, $20, $5d, $76, $62, $00, $03, $20, $5d, $6c, $fe, $00, $03, $20, $5d, $00, $04, $60, $20, $67, $00, $09, $20, $65, $5d, $00, $05, $20, $5d, $00, $05, $20, $5d, $60, $20, $00, $03, $60, $5d, $00, $01, $60, $20, $00, $02, $60, $67, $00, $09, $20, $65, $5d, $e1, $61, $00, $03, $20, $5d, $00, $05, $60, $5d, $60, $20, $00, $03, $60, $5d, $00, $05, $60, $67, $00, $09, $20, $65, $4a, $00, $05, $40, $71, $00, $05, $40, $71, $00, $05, $40, $4b, $00, $03, $60, $00, $01, $20, $67, $00, $09, $20, $65, $28, $03, $29, $20, $32, $30, $00, $01, $32, $20, $01, $0e, $04, $12, $05, $01, $13, $20, $13, $09, $07, $0e, $05, $12, $00, $05, $20, $00, $09, $63, $00, $1a, $20
+	.include "screens.asm"
