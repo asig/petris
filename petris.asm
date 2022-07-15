@@ -505,112 +505,30 @@ print_next_tetromino:
 	sta vram_stats_next+1
 	rts
 
-set_tetromino_in_pf_elem  .macro
-	lda (word2),y
-	beq _l
-	sta (word1), y
-_l  iny
-	.endm
+; Save the current screen 
+save_screen:
+	set16i word1, vram
+	set16i word2, screen_buf
+	jmp copy_screen
 
-	.ifdef DEBUG
-tmp .reserve 2
-	.endif
+; Restore a screen that was previously saved
+restore_screen
+	set16i word1, screen_buf
+	set16i word2, vram
+	jmp copy_screen
 
-; Sets the current tetromino (cur_tetromino) in the playfield
-; at (cur_tetromino_x, cur_tetromino_y). No checks are performed
-; whether it fits.
-; Input: -
-set_tetromino_in_pf:
-	; compute pf address
-	set16i word1, playfield+2*(pf_w+4)+2	; 2-byte sentinels around the whole playfield
-	
-	; add col offset
-	lda cur_tetromino_x
-	clc
-	adc word1
-	sta word1
-	lda #0
-	adc word1+1
-	sta word1+1
-
-	; add row offset
-	lda cur_tetromino_y
-	jsr mulPlayfieldW
-	txa
-	clc
-	adc word1
-	sta word1
-	tya
-	adc word1+1
-	sta word1+1
-
-	sub16i word1, (pf_w+4)+2	; compensate for origin being at (2,1)
-	set16i word2, cur_tetromino
-
-	ldx #4  ; 4 rows
-_l  ldy #0
-	set_tetromino_in_pf_elem
-	set_tetromino_in_pf_elem
-	set_tetromino_in_pf_elem
-	set_tetromino_in_pf_elem
-	add16i word1, pf_w+4
-	add16i word2, 4
+copy_screen:
+	ldx #3
+_l	ldy #0
+	jsr copy_mem
+	inc word1+1
+	inc word2+1
 	dex
 	bne _l
-
+	ldy #232	; == (1000-3*256), but cbmasm can't handle that yet...
+	jsr copy_mem
 	rts
 
-remove_tetromino_from_pf_elem  .macro
-	lda (word2),y
-	beq _l
-	lda #0
-	sta (word1), y
-_l  iny
-	.endm
-
-; Removes the current tetromino (cur_tetromino) from the playfield
-; at (cur_tetromino_x, cur_tetromino_y). No checks are performed
-; whether it fits.
-; Input: -
-remove_tetromino_from_pf:
-	; compute pf address
-	set16i word1, playfield+2*(pf_w+4)+2	; 2-byte sentinels around the whole playfield
-	
-	; add col offset
-	lda cur_tetromino_x
-	clc
-	adc word1
-	sta word1
-	lda #0
-	adc word1+1
-	sta word1+1
-
-	; add row offset
-	lda cur_tetromino_y
-	jsr mulPlayfieldW
-	txa
-	clc
-	adc word1
-	sta word1
-	tya
-	adc word1+1
-	sta word1+1
-
-	sub16i word1, (pf_w+4)+2	; compensate for origin being at (2,1)
-	set16i word2, cur_tetromino
-
-	ldx #4  ; 4 rows
-_l  ldy #0
-	remove_tetromino_from_pf_elem
-	remove_tetromino_from_pf_elem
-	remove_tetromino_from_pf_elem
-	remove_tetromino_from_pf_elem
-	add16i word1, pf_w+4
-	add16i word2, 4
-	dex
-	bne _l
-
-	rts
 
 
 ; ********************************************************************
@@ -735,6 +653,113 @@ _l  ldy #0
 	
 	; Still here? So it fits!
 	clc
+	rts
+
+set_tetromino_in_pf_elem  .macro
+	lda (word2),y
+	beq _l
+	sta (word1), y
+_l  iny
+	.endm
+
+	.ifdef DEBUG
+tmp .reserve 2
+	.endif
+
+; Sets the current tetromino (cur_tetromino) in the playfield
+; at (cur_tetromino_x, cur_tetromino_y). No checks are performed
+; whether it fits.
+; Input: -
+set_tetromino_in_pf:
+	; compute pf address
+	set16i word1, playfield+2*(pf_w+4)+2	; 2-byte sentinels around the whole playfield
+	
+	; add col offset
+	lda cur_tetromino_x
+	clc
+	adc word1
+	sta word1
+	lda #0
+	adc word1+1
+	sta word1+1
+
+	; add row offset
+	lda cur_tetromino_y
+	jsr mulPlayfieldW
+	txa
+	clc
+	adc word1
+	sta word1
+	tya
+	adc word1+1
+	sta word1+1
+
+	sub16i word1, (pf_w+4)+2	; compensate for origin being at (2,1)
+	set16i word2, cur_tetromino
+
+	ldx #4  ; 4 rows
+_l  ldy #0
+	set_tetromino_in_pf_elem
+	set_tetromino_in_pf_elem
+	set_tetromino_in_pf_elem
+	set_tetromino_in_pf_elem
+	add16i word1, pf_w+4
+	add16i word2, 4
+	dex
+	bne _l
+
+	rts
+
+remove_tetromino_from_pf_elem  .macro
+	lda (word2),y
+	beq _l
+	lda #0
+	sta (word1), y
+_l  iny
+	.endm
+
+; Removes the current tetromino (cur_tetromino) from the playfield
+; at (cur_tetromino_x, cur_tetromino_y). No checks are performed
+; whether it fits.
+; Input: -
+remove_tetromino_from_pf:
+	; compute pf address
+	set16i word1, playfield+2*(pf_w+4)+2	; 2-byte sentinels around the whole playfield
+	
+	; add col offset
+	lda cur_tetromino_x
+	clc
+	adc word1
+	sta word1
+	lda #0
+	adc word1+1
+	sta word1+1
+
+	; add row offset
+	lda cur_tetromino_y
+	jsr mulPlayfieldW
+	txa
+	clc
+	adc word1
+	sta word1
+	tya
+	adc word1+1
+	sta word1+1
+
+	sub16i word1, (pf_w+4)+2	; compensate for origin being at (2,1)
+	set16i word2, cur_tetromino
+
+	ldx #4  ; 4 rows
+_l  ldy #0
+	remove_tetromino_from_pf_elem
+	remove_tetromino_from_pf_elem
+	remove_tetromino_from_pf_elem
+	remove_tetromino_from_pf_elem
+	add16i word1, pf_w+4
+	add16i word2, 4
+	dex
+	bne _l
+
 	rts
 
 ; ********************************************************************
@@ -1032,7 +1057,7 @@ _l2	lda via_portb
 ; Input: 
 ;   word1: source
 ;   word2: dest
-;   Y: # of bytes to copy (must be > 0)
+;   Y: # of bytes to copy (if 0, copies 256 bytes)
 ; Output: -
 ; Invalidates: A, Y
 copy_mem:
