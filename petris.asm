@@ -276,14 +276,18 @@ _cploop
 
 	set16i word3, pf_line_empty
 
-	ldx #5
+	ldx #9
 
 _blinkloop
-	; wait a little 
-	jsr wait_vbl
-	jsr wait_vbl
-	jsr wait_vbl
-	jsr wait_vbl
+	; wait a little
+	txa
+	pha
+	ldx #5
+_wl	jsr wait_vbl
+	dex
+	bne _wl
+	pla
+	tax
 
 	; copy empty or content to line
 	ldy #pf_w
@@ -316,7 +320,8 @@ _l1
 	; Move all above lines down
 	ldx lines_to_go
 	inx	; copy 1 sentinel line in so that we don't have to clear the top line
-_move	
+
+	push16m word1
 	sec
 	lda word1
 	sbc #(pf_w+4)
@@ -324,18 +329,24 @@ _move
 	lda word1+1
 	sbc #0
 	sta word2+1
+
+_move	
 	ldy #pf_w
-_l2	lda (word1),y
-	sta (word2),y
+_l2	lda (word2),y
+	sta (word1),y
 	dey
 	bne _l2
+
+	set16m word1, word2
+	sub16i word2, pf_w+4
+
 	dex
 	bne _move
 
-	push16m word1
 	jsr draw_playfield	; Draw playfield
 	pop16m word1
 	jmp _scanline		; see if we need to clear more lines
+
 
 ; Show game over
 game_over:
@@ -766,9 +777,9 @@ _l3 sta (word2),y
 
 clear_playfield:
 	; Source address to word1
-	set16i word1, playfield+2*(pf_w+2+2)+2  ; skip 1st 2 rows, skip 2 cols (sentinels)
+	set16i word1, playfield+2  ; skip 2 cols (sentinels)
 
-	ldx #pf_h
+	ldx #pf_h+2	; Also clear the upper 2 sentinel rows
 _rl
 	lda #0
 	ldy #pf_w-1
