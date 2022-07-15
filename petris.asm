@@ -36,12 +36,12 @@ vram_stats_score    .equ    vram + 12 * scr_w + 15
 vram_stats_lines    .equ    vram + 12 * scr_w + 23
 vram_stats_next     .equ    vram + 12 * scr_w + 32
 vram_stats_t_i      .equ    vram + 17 * scr_w + 18
-vram_stats_t_z      .equ    vram + 19 * scr_w + 18
-vram_stats_t_s      .equ    vram + 21 * scr_w + 18
-vram_stats_t_t      .equ    vram + 17 * scr_w + 25
+vram_stats_t_s      .equ    vram + 17 * scr_w + 32
+vram_stats_t_z      .equ    vram + 17 * scr_w + 25
+vram_stats_t_t      .equ    vram + 19 * scr_w + 18
 vram_stats_t_j      .equ    vram + 19 * scr_w + 25
-vram_stats_t_l      .equ    vram + 17 * scr_w + 32
-vram_stats_t_o      .equ    vram + 19 * scr_w + 32
+vram_stats_t_l      .equ    vram + 19 * scr_w + 32
+vram_stats_t_o      .equ    vram + 21 * scr_w + 18
 
 via	.equ $E840
 via_portb	.equ via
@@ -51,8 +51,9 @@ curkey	.equ $203
 ; Zeropage addresses used to pass params
 word1   .equ    $54 ; $b8
 word2   .equ    $56 ; $ba
-byte1   .equ    $58
-byte2   .equ    $59
+word3	.equ	$58
+byte1   .equ    $5a
+byte2   .equ    $5b
 
 ; Playfield consts
 pf_w    .equ    10
@@ -61,7 +62,8 @@ pf_h    .equ    22
 ; Key codes
 key_left	.equ 48 ; 'A' key
 key_right	.equ 47	; 'D' key
-key_down	.equ 44	; 'S' key
+key_down	.equ 40	; 'S' key
+key_fall	.equ 6	; Space key
 key_rotate	.equ 27	; Return key
 key_pause	.equ 52	; 'P' key
 key_quit	.equ 4	; Run/stop key
@@ -74,9 +76,9 @@ inital_fall_delay	.equ	30
 ; ********************************************************************
 
 	.include "startup.i"
-
+	
 	jsr init_random
-	jmp main_game
+	jsr main_game
 	rts
 
 
@@ -118,6 +120,7 @@ _c1	cmp #key_right
 _c2	cmp #key_down
 	bne _c3
 	jsr handle_down
+	jmp _cont
 _c3	cmp #key_rotate
 	bne _c4
 	jsr handle_rotate
@@ -126,13 +129,17 @@ _c4	cmp #key_pause
 	bne _c5
 	jsr handle_pause
 	jmp _cont
-_c5	cmp #key_quit
+_c5	cmp #key_fall
 	bne _c6
+	jsr handle_fall
+	jmp _cont
+_c6	cmp #key_quit
+	bne _c7
 	jsr handle_quit
 	bcc _cont
 	; TODO jump title
 
-_c6
+_c7
 _cont
 	.ifdef DEBUG
 	; print out key
@@ -145,16 +152,50 @@ _cont
 	jsr print_uint16_lp1
 	.endif
 
-	; Update scores and stats
-	jsr print_scores
-	jsr print_stats
-	jsr print_next_tetromino
+;	; Update scores and stats
+;	jsr print_scores
+;	jsr print_stats
+;	jsr print_next_tetromino
+
+	jsr test_tetromino_fits
+	bcc _gamenotover
+	jmp game_over
+_gamenotover
+
+	dec cur_fall_cnt
+	bne _fall_cont
+	; Reset fall counter
+	lda cur_fall_delay
+	sta cur_fall_cnt
+
+	; Move to next line, if possible
+	inc cur_tetromino_y
+	jsr test_tetromino_fits
+	bcc _fall_cont	; Fits, move on.
+
+	; Stone does not fit one row below: add it to the playfield, start a new stone
+	dec cur_tetromino_y
+	jsr set_tetromino_in_pf
+	jsr check_lines
+	jsr new_tetromino
+	jmp _loop
+
+_fall_cont
 
 	jsr set_tetromino_in_pf
 	jsr draw_playfield
 	jsr remove_tetromino_from_pf
 
 	.ifdef DEBUG
+	; print out fall cnt
+	lda cur_fall_cnt
+	sta word1
+	lda #0
+	sta word1+1
+	set16i word2, vram+scr_w-3
+	ldy #4  ; 3 digits
+	jsr print_uint16_lp1
+
 	; print out tetromino pos
 	lda cur_tetromino_x
 	sta word1
@@ -186,6 +227,143 @@ _cont
 ;	rts
 
 
+lines_removed:	.reserve 1
+lines_to_go:	.reserve 1
+; Find and remove complete lines, update scores, update screen
+check_lines:
+	lda #0
+	sta lines_removed
+	; start at the bottom-most line
+	set16i word1, playfield + (pf_h+1)*(pf_w+4) + 2 - 1	; "-1" to compensate Y going from 1 to pf_w
+	lda #pf_h
+	sta lines_to_go
+_scanline
+	ldy #pf_w
+	lda (word1),y
+	dey
+_l	and (word1),y
+	dey
+	bne _l
+	cmp #0
+	bne _clearline
+
+	; Move up one line
+_prevline
+	sub16i word1, (pf_w+4)
+	dec lines_to_go
+	bne _scanline
+
+	; We reached the top.
+	; Update lines removed and score accordingly
+	clc
+	lda lines
+	adc lines_removed
+	sta lines
+	jsr print_scores
+	rts
+
+_clearline
+	inc lines_removed
+	; blink the line a few times
+	; First, save and clear the current line
+	set16i word2, pf_line_buf
+	ldy #pf_w
+_cploop
+	lda (word1),y
+	sta (word2),y
+	dey
+	bne _cploop
+
+	set16i word3, pf_line_empty
+
+	ldx #5
+
+_blinkloop
+	; wait a little 
+	jsr wait_vbl
+	jsr wait_vbl
+	jsr wait_vbl
+	jsr wait_vbl
+
+	; copy empty or content to line
+	ldy #pf_w
+_l1
+	lda (word3),y
+	sta (word1),y
+	dey
+	bne _l1	
+	pushx
+	push16m word1
+	push16m word2
+	jsr draw_playfield
+	pop16m word2
+	pop16m word1
+	popx
+	
+	; switch what needs to bo copied
+	lda word2
+	ldy word3
+	sta word3
+	sty word2
+	lda word2+1
+	ldy word3+1
+	sta word3+1
+	sty word2+1
+
+	dex
+	bne _blinkloop
+
+	; Move all above lines down
+	ldx lines_to_go
+	inx	; copy 1 sentinel line in so that we don't have to clear the top line
+_move	
+	sec
+	lda word1
+	sbc #(pf_w+4)
+	sta word2
+	lda word1+1
+	sbc #0
+	sta word2+1
+	ldy #pf_w
+_l2	lda (word1),y
+	sta (word2),y
+	dey
+	bne _l2
+	dex
+	bne _move
+
+	push16m word1
+	jsr draw_playfield	; Draw playfield
+	pop16m word1
+	jmp _scanline		; see if we need to clear more lines
+
+; Show game over
+game_over:
+	rts
+
+handle_fall:
+_l	inc cur_tetromino_y
+	jsr test_tetromino_fits
+	bcs _nofit
+
+	; Draw playfield
+	jsr set_tetromino_in_pf
+	jsr draw_playfield
+	jsr remove_tetromino_from_pf
+
+	; Wait a little
+	jsr wait_vbl
+	jsr wait_vbl
+	jmp _l
+
+_nofit
+	dec cur_tetromino_y
+	; Set cur_fall_cnt so that we set the
+	; tetromino imediately in the main game loop
+	lda #1
+	sta cur_fall_cnt
+	rts
+
 handle_left:
 	dec cur_tetromino_x
 	jsr test_tetromino_fits
@@ -205,10 +383,21 @@ _nofit
 	rts
 
 handle_down:
+	inc cur_tetromino_y
+	jsr test_tetromino_fits
+	bcs _nofit
+	rts
+_nofit
+	dec cur_tetromino_y
 	rts
 
 handle_rotate:
+	jsr rotate_cur_left
+	jsr test_tetromino_fits
+	bcs _nofit
 	rts
+_nofit
+	jmp rotate_cur_right
 
 handle_pause:
 	rts
@@ -392,7 +581,7 @@ draw_cur_tetromino:
 	set16m tmp, word1
 	.endif
 
-	sub16i word1, scr_w+1	; compensate for origin being at (1,1)
+	sub16i word1, scr_w+2	; compensate for origin being at (2,1)
 
 	set16i word2, cur_tetromino
 
@@ -457,7 +646,7 @@ set_tetromino_in_pf:
 	adc word1+1
 	sta word1+1
 
-	sub16i word1, (pf_w+4)+1	; compensate for origin being at (1,1)
+	sub16i word1, (pf_w+4)+2	; compensate for origin being at (2,1)
 	set16i word2, cur_tetromino
 
 	ldx #4  ; 4 rows
@@ -510,7 +699,7 @@ remove_tetromino_from_pf:
 	adc word1+1
 	sta word1+1
 
-	sub16i word1, (pf_w+4)+1	; compensate for origin being at (1,1)
+	sub16i word1, (pf_w+4)+2	; compensate for origin being at (2,1)
 	set16i word2, cur_tetromino
 
 	ldx #4  ; 4 rows
@@ -633,7 +822,7 @@ test_tetromino_fits:
 	adc word1+1
 	sta word1+1
 
-	sub16i word1, (pf_w+4)+1	; compensate for origin being at (1,1)
+	sub16i word1, (pf_w+4)+2	; compensate for origin being at (2,1)
 	set16i word2, cur_tetromino
 
 	ldx #4  ; 4 rows
@@ -658,12 +847,18 @@ _l  ldy #0
 ; Copy "next_tetromino" to cur_tetromino, and select new next tetromino
 ; Update stats and next_tetromino
 new_tetromino:
+
+	; Update stats
 	lda next_tetromino
 	asl
-
-	; Copy tetromino:
-	; ...copy source address to word1
 	tax
+	inc stats,x
+	bcc _nooverflow
+	inc stats+1,x
+_nooverflow
+
+	; Copy next tetromino to current
+	; ...copy source address to word1
 	lda tetrominos,x
 	sta word1
 	lda tetrominos+1,x
@@ -676,20 +871,18 @@ new_tetromino:
 	ldy #4*4
 	jsr copy_mem
 
-	; Update stats
-	clc
-	inc stats,x
-	bcc _nooverflow
-	inc stats+1,x
-_nooverflow
 
 	; set position
-	lda #(pf_w-3)/2
+	lda #pf_w/2
 	sta cur_tetromino_x
 	lda #0
 	sta cur_tetromino_y
 
-	; Pick a new tetromino
+	; Set falling delay and countdown
+	lda cur_fall_delay
+	sta cur_fall_cnt
+
+	; Pick a new next tetromino
 	jsr random
 _l  cmp #7
 	bcc _done ; less than 7 -> we're good
@@ -697,6 +890,8 @@ _l  cmp #7
 	jmp _l
 _done
 	sta next_tetromino
+
+	; Update screen
 	jsr print_stats
 	jmp print_next_tetromino
 	
@@ -743,49 +938,47 @@ rotate_cur_left:
 	ldy #4*4
 	jmp copy_mem
 
-;rotate_cur_right:
-;	lda cur_tetromino+0
-;	sta rotate_buf+12
-;	lda cur_tetromino+1
-;	sta rotate_buf+8
-;	lda cur_tetromino+2
-;	sta rotate_buf+4
-;	lda cur_tetromino+3
-;	sta rotate_buf+0
-;
-;	lda cur_tetromino+4
-;	sta rotate_buf+13
-;	lda cur_tetromino+5
-;	sta rotate_buf+9
-;	lda cur_tetromino+6
-;	sta rotate_buf+5
-;	lda cur_tetromino+7
-;	sta rotate_buf+1
-;
-;	lda cur_tetromino+8
-;	sta rotate_buf+14
-;	lda cur_tetromino+9
-;	sta rotate_buf+10
-;	lda cur_tetromino+10
-;	sta rotate_buf+6
-;	lda cur_tetromino+11
-;	sta rotate_buf+2
-;
-;	lda cur_tetromino+12
-;	sta rotate_buf+15
-;	lda cur_tetromino+13
-;	sta rotate_buf+11
-;	lda cur_tetromino+14
-;	sta rotate_buf+7
-;	lda cur_tetromino+15
-;	sta rotate_buf+3
-;
-;	set16i word1, rotate_buf
-;	set16i word2, cur_tetromino
-;	ldy #4*4
-;	jmp copy_mem
-;
+rotate_cur_right:
+	lda cur_tetromino+0
+	sta rotate_buf+12
+	lda cur_tetromino+1
+	sta rotate_buf+8
+	lda cur_tetromino+2
+	sta rotate_buf+4
+	lda cur_tetromino+3
+	sta rotate_buf+0
 
+	lda cur_tetromino+4
+	sta rotate_buf+13
+	lda cur_tetromino+5
+	sta rotate_buf+9
+	lda cur_tetromino+6
+	sta rotate_buf+5
+	lda cur_tetromino+7
+	sta rotate_buf+1
+
+	lda cur_tetromino+8
+	sta rotate_buf+14
+	lda cur_tetromino+9
+	sta rotate_buf+10
+	lda cur_tetromino+10
+	sta rotate_buf+6
+	lda cur_tetromino+11
+	sta rotate_buf+2
+
+	lda cur_tetromino+12
+	sta rotate_buf+15
+	lda cur_tetromino+13
+	sta rotate_buf+11
+	lda cur_tetromino+14
+	sta rotate_buf+7
+	lda cur_tetromino+15
+	sta rotate_buf+3
+
+	set16i word1, rotate_buf
+	set16i word2, cur_tetromino
+	ldy #4*4
+	jmp copy_mem
 
 rotate_buf:
 	.reserve 16
@@ -861,12 +1054,17 @@ _multab
 ; Output: -
 ; Invalidates: A
 wait_vbl:
+	; wait until we're out of vertical blanking
 _l	lda via_portb
 	and #$20
-	bne _l
+	beq _l
+	; wait until we're entering vertical blanking again
+_l2	lda via_portb
+	and #$20
+	bne _l2
 	rts
 
-; Copy non-overlapping memory block
+; Copy memory block. Overlaps work if destination > source
 ; ---------------------------------
 ; Input: 
 ;   word1: source
@@ -916,11 +1114,12 @@ _l  lda word1+0 ; subtract current tens
 	adc _tens+1, y
 	sta word1+1
 	txa
-	bne _digit  ; Not zero, print it
-	lda _pad
-	bne _digit      ; No padding, print digit
-	tya
-	cmp #0              ; is it the last digit?
+	bne _digit	; Not zero, print it
+	ldx _pad
+	bne _digit	; No padding, print digit
+;	tya
+;	cmp #0              ; is it the last digit?
+	cpy #0
 	bne _notlastdigit   ; no, continue padding with ' '
 	lda #scr('0')       ; otherwise, print '0'
 	bne _print          
@@ -960,8 +1159,10 @@ score:  .reserve 2
 lines:  .reserve 2
 stats:  .reserve 7*2    ; Same order as in "tetrominos" list
 
-playfield:
-	.reserve (pf_w+2+2)*(pf_h+2+2) , scr('A')
+playfield:	.reserve (pf_w+2+2)*(pf_h+2+2) , scr('A')
+; The following 2 fields are used for line blinking	
+pf_line_buf		.reserve pf_w+4
+pf_line_empty	.reserve pf_w+4, scr(' ')
 
 cur_fall_delay:		.reserve 1	; Current delay per line
 cur_fall_cnt:		.reserve 1	; fall count down; when 0, the tetromino falls down 1 line
