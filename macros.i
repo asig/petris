@@ -38,3 +38,27 @@ sub16i  .macro addr, val
         sbc #>(val)
         sta addr+1
         .endm
+
+pushx	.macro
+	txa
+	pha
+	.endm
+
+popx	.macro
+	pla
+	tax
+	.endm
+	
+push16m	.macro addr
+	lda addr
+	pha
+	lda addr+1
+	pha
+	.endm
+
+pop16m	.macro addr
+	pla
+	sta addr+1
+	pla
+	sta addr
+	.endm
