@@ -30,18 +30,19 @@ DEBUG	.equ 1
 
 scr_w   .equ    40
 vram    .equ    $8000
-
-vram_playfield      .equ    vram +  2 * scr_w +  3
-vram_stats_score    .equ    vram + 12 * scr_w + 15
-vram_stats_lines    .equ    vram + 12 * scr_w + 23
-vram_stats_next     .equ    vram + 12 * scr_w + 32
-vram_stats_t_i      .equ    vram + 17 * scr_w + 18
-vram_stats_t_s      .equ    vram + 17 * scr_w + 32
-vram_stats_t_z      .equ    vram + 17 * scr_w + 25
-vram_stats_t_t      .equ    vram + 19 * scr_w + 18
-vram_stats_t_j      .equ    vram + 19 * scr_w + 25
-vram_stats_t_l      .equ    vram + 19 * scr_w + 32
-vram_stats_t_o      .equ    vram + 21 * scr_w + 18
+                                   
+vram_playfield      .equ    vram +  1 * scr_w +  2
+vram_stats_score    .equ    vram + 14 * scr_w + 14
+vram_stats_lines    .equ    vram + 14 * scr_w + 21
+vram_stats_level	.equ	vram + 14 * scr_w + 28
+vram_stats_next     .equ    vram + 14 * scr_w + 35
+vram_stats_t_i      .equ    vram + 19 * scr_w + 16
+vram_stats_t_j      .equ    vram + 19 * scr_w + 22
+vram_stats_t_s      .equ    vram + 19 * scr_w + 28
+vram_stats_t_o      .equ    vram + 19 * scr_w + 34
+vram_stats_t_t      .equ    vram + 21 * scr_w + 16
+vram_stats_t_l      .equ    vram + 21 * scr_w + 22
+vram_stats_t_z      .equ    vram + 21 * scr_w + 28
 
 via	.equ $E840
 via_portb	.equ via
@@ -1166,6 +1167,7 @@ _tens
 ; ********************************************************************
 
 ; Scores 
+level:	.reserve 1
 score:  .reserve 2
 lines:  .reserve 2
 stats:  .reserve 7*2    ; Same order as in "tetrominos" list
