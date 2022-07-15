@@ -90,7 +90,13 @@ last_key	.reserve 1
 main_game:
 	jsr init_scores_and_next_tetromino
 	jsr init_playfield
-	jsr init_screen
+
+	; Show game screen
+	set16i word1, main_screen
+	set16i word2, vram
+	set16i word3, 1000
+	jsr decrunch
+
 	jsr new_tetromino
 	lda #inital_fall_delay
 	sta cur_fall_delay
@@ -439,60 +445,6 @@ _l  sta score,x
 	and #%110
 _l2 sta next_tetromino
 	rts
-
-init_screen:
-	set16i word1, main_screen
-	set16i word2, vram
-
-_next
-	ldy #0
-	lda (word1),y
-	beq _run
-	; Not a run, just store byte in 
-	sta (word2),y    
-	
-	inc16 word1
-	inc16 word2
-
-	jmp _end
-
-_run
-	iny
-	lda (word1),y
-	clc
-	adc #1
-	sta _len
-	iny
-	lda (word1),y
-
-	ldy _len
-_l  sta (word2),y
-	dey
-	bne _l
-	sta (word2),y ; also store the 0th byte
-
-	; Increment vram pointer by adding _len
-	clc
-	lda word2
-	adc _len
-	sta word2
-	lda word2+1
-	adc #0
-	sta word2+1
-
-	; increment source pointer
-	add16i word1, 3
-
-_end 
-	; check whether we're at the end of vram
-	lda #<(vram+1000)
-	cmp word2
-	bne _next
-	lda #>(vram+1000)
-	cmp word2+1
-	bne _next
-	rts
-_len .reserve 1
 
 ; ********************************************************************
 ; *** Screen updates
@@ -934,6 +886,72 @@ rotate_buf:
 
 	.include "random.asm"
 
+; "Decrunch" data
+; Input:
+;   word1: address of "crunched" (RLE-packed) data 
+;   word2: destination address
+;   word3: size of (decrunched) data
+; Invalidate:
+;   A,X,Y,word1,word2,word3
+decrunch
+_next
+	ldy #0
+	lda (word1),y
+	beq _run
+	; Not a run, just store byte in 
+	sta (word2),y
+	inc16 word1
+	inc16 word2
+	dec16 word3
+
+	jmp _end
+
+_run
+	iny
+	lda (word1),y
+	clc
+	adc #1
+	sta _len
+	iny
+	lda (word1),y
+
+	ldy _len
+_l  sta (word2),y
+	dey
+	bne _l
+	sta (word2),y ; also store the 0th byte
+
+	; Increment dest pointer by adding _len
+	clc
+	lda word2
+	adc _len
+	sta word2
+	lda word2+1
+	adc #0
+	sta word2+1
+
+	; Decrement byte count by subtracing _len
+	sec
+	lda word3
+	sbc _len
+	sta word3
+	lda word3+1
+	sbc #0
+	sta word3+1
+
+	; increment source pointer
+	add16i word1, 3
+
+_end 
+	; check whether remaining byte count is 0
+	lda #0
+	cmp word3
+	bne _next
+	cmp word3+1
+	bne _next
+	; both are 0, so we're done.
+	rts
+_len .reserve 1
 
 ; Multiply accumulator by 40
 ; Input:
