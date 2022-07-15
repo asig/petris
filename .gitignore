@@ -3,3 +3,6 @@ screen_to_unicode
 petris.prg
 petris.sym
 logo.txt
+screens.asm
+pe_screen_extractor
+
