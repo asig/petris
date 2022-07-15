@@ -19,6 +19,13 @@ inc16   .macro addr
 _l
         .endm
 
+dec16   .macro addr
+		lda addr
+		bne _l
+		dec addr+1
+_l		dec addr
+		.endm
+
 add16i  .macro addr, val
         clc
         lda addr
