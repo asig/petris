@@ -553,72 +553,6 @@ print_next_tetromino:
 	sta vram_stats_next+1
 	rts
 
-
-draw_cur_tetromino_set  .macro
-	lda (word2),y
-	beq _l
-	sta (word1), y
-_l  iny
-	.endm
-
-
-; Draws the current tetromino (cur_tetromino) on screen
-; at (cur_tetromino_x, cur_tetromino_y)
-; Input: -
-draw_cur_tetromino:
-	; compute screen address
-	set16i word1, vram_playfield
-
-	; add col offset
-	lda cur_tetromino_x
-	clc
-	adc word1
-	sta word1
-	lda #0
-	adc word1+1
-	sta word1+1
-
-	; add row offset
-	lda cur_tetromino_y
-	jsr mul40
-	txa
-	clc
-	adc word1
-	sta word1
-	tya
-	adc word1+1
-	sta word1+1
-
-	.ifdef DEBUG
-	set16m tmp, word1
-	.endif
-
-	sub16i word1, scr_w+2	; compensate for origin being at (2,1)
-
-	set16i word2, cur_tetromino
-
-	ldx #4  ; 4 rows
-_l  ldy #0
-	draw_cur_tetromino_set
-	draw_cur_tetromino_set
-	draw_cur_tetromino_set
-	draw_cur_tetromino_set
-	add16i word1, scr_w
-	add16i word2, 4
-	dex
-	bne _l
-
-	.ifdef DEBUG
-	set16m word1, tmp
-	ldy #0
-	lda #$53
-	sta (word1),y
-	.endif
-
-	rts
-
-
-
 set_tetromino_in_pf_elem  .macro
 	lda (word2),y
 	beq _l
@@ -681,7 +615,6 @@ remove_tetromino_from_pf_elem  .macro
 	sta (word1), y
 _l  iny
 	.endm
-
 
 ; Removes the current tetromino (cur_tetromino) from the playfield
 ; at (cur_tetromino_x, cur_tetromino_y). No checks are performed
@@ -1251,3 +1184,9 @@ tetromino_o:
 
 
 	.include "screens.asm"
+
+screen_buf	.equ	*	; Screen buffer at the end of the file so that we don't have to actually store the bytes
+
+	.if * - 1000 >= $8000
+	.fail "Program too big!"
+	.endif
