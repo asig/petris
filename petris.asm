@@ -88,6 +88,8 @@ inital_fall_delay	.equ	30
 ; ********************************************************************
 last_key	.reserve 1
 main_game:
+	lda #0
+	sta quit_flag
 	jsr init_scores_and_next_tetromino
 	jsr init_playfield
 
@@ -116,38 +118,40 @@ _loop
 	beq _cont	; No key pressed
 
 	; Key pressed: Handle it!
-	cmp #key_left
-	bne _c1
-	jsr handle_left
+	ldx #0
+_kl	lda _handlers,x
+	beq _cont
+	cmp last_key
+	bne _next
+	lda _handlers+1,x
+	sta _jsr+1
+	lda _handlers+2,x
+	sta _jsr+2
+_jsr	jsr $ffff
 	jmp _cont
-_c1	cmp #key_right
-	bne _c2
-	jsr handle_right
-	jmp _cont
-_c2	cmp #key_down
-	bne _c3
-	jsr handle_down
-	jmp _cont
-_c3	cmp #key_rotate
-	bne _c4
-	jsr handle_rotate
-	jmp _cont
-_c4	cmp #key_pause
-	bne _c5
-	jsr handle_pause
-	jmp _cont
-_c5	cmp #key_fall
-	bne _c6
-	jsr handle_fall
-	jmp _cont
-_c6	cmp #key_quit
-	bne _c7
-	jsr handle_quit
-	bcc _cont
-	; TODO jump title
+_next
+	inx
+	inx
+	inx
+	jmp _kl
 
-_c7
+_handlers	
+	.byte key_left, <handle_left, >handle_left
+	.byte key_right, <handle_right, >handle_right 
+	.byte key_down, <handle_down, >handle_down 
+	.byte key_rotate, <handle_rotate, >handle_rotate 
+	.byte key_pause, <handle_pause, >handle_pause 
+	.byte key_fall, <handle_fall, >handle_fall 
+	.byte key_quit, <handle_quit, >handle_quit
+	.byte 0
+
 _cont
+	lda quit_flag
+	beq _c2
+	; TODO JUMP TITLE
+	rts
+
+_c2
 	.ifdef DEBUG
 	; print out key
 	lda last_key
@@ -188,7 +192,6 @@ _gamenotover
 	jmp _loop
 
 _fall_cont
-
 	jsr set_tetromino_in_pf
 	jsr draw_playfield
 	jsr remove_tetromino_from_pf
@@ -417,13 +420,109 @@ handle_rotate:
 _nofit
 	jmp rotate_cur_right
 
+pause_text .byte scr("*** paused. ***")
+pause_text_len	.equ * - pause_text
+pause_address	.equ vram + (box_y+2)*scr_w+box_x+2
+box_x	.equ	(40-pause_text_len-4)/2
+box_y	.equ	10
 handle_pause:
+	; wait for the key to be released
+_w	lda curkey
+	cmp #$ff
+	bne _w
+
+	jsr save_screen
+	set16i word1, vram + box_y*scr_w+box_x
+	ldx #5
+	ldy #pause_text_len + 4
+	jsr draw_box
+	lda #0
+	sta _cnt
+_l	lda curkey
+	cmp #$ff
+	bne _done
+	jsr wait_vbl
+	inc _cnt
+	inc _cnt
+	inc _cnt
+	inc _cnt
+	bmi _l2
+	; bit 7 not set,  print "pause"...
+	set16i word1, pause_text
+	set16i word2, pause_address
+	ldy #pause_text_len
+	jsr copy_mem
+	jmp _l
+_l2 set16i word1, pause_address
+	ldy #pause_text_len
+	lda #scr(' ')
+	jsr fill_mem
+	jmp _l
+_done
+_w2	lda curkey
+	cmp #$ff
+	bne _w2
+	jsr restore_screen
 	rts
 
+_cnt	.reserve	1
+
+quit_text .byte scr("*** quit? (y/n) ***")
+quit_text_len	.equ * - quit_text
+quit_address	.equ vram + (qbox_y+2)*scr_w+qbox_x+2
+qbox_x	.equ	(40-quit_text_len-4)/2
+qbox_y	.equ	10
 handle_quit:
-	; Set C flag to signal "quit"
-	sec
+	; wait for the key to be released
+_w	lda curkey
+	cmp #$ff
+	bne _w
+
+	jsr save_screen
+	set16i word1, vram + qbox_y*scr_w+qbox_x
+	ldx #5
+	ldy #quit_text_len + 4
+	jsr draw_box
+
+	lda #0
+	sta _cnt
+_l	lda curkey
+	cmp #54
+	beq _quit
+	cmp #22
+	beq _noquit
+	jsr wait_vbl
+	inc _cnt
+	inc _cnt
+	inc _cnt
+	inc _cnt
+	bmi _l2
+	; bit 7 not set,  print "quit"...
+	set16i word1, quit_text
+	set16i word2, quit_address
+	ldy #quit_text_len
+	jsr copy_mem
+	jmp _l
+_l2 set16i word1, quit_address
+	ldy #quit_text_len
+	lda #scr(' ')
+	jsr fill_mem
+	jmp _l
+_quit
+	lda #1
+	bne _cont
+_noquit
+	lda #0
+_cont
+	sta quit_flag
+
+_w2	lda curkey
+	cmp #$ff
+	bne _w2
+	jsr restore_screen
+
 	rts
+_cnt	.reserve	1
 
 ; ********************************************************************
 ; *** Init
@@ -529,7 +628,66 @@ _l	ldy #0
 	jsr copy_mem
 	rts
 
+; Draws a box
+; Input:
+;   word1: Top left corner
+;   Y: width
+;   X: height
+draw_box
+	sty _w
+	stx _h
+	
+	; first line
+	lda #73	; "╮"
+	dey
+	sta (word1),y
+	lda #64	; "─"
+_fl	dey
+	beq _fld
+	sta (word1),y
+	jmp _fl
+_fld
+	lda #85	; "╭"	
+	sta (word1),y
+	
+	dex
+	; no "dex" after first line, because we terminate when X == 0
 
+_i	add16i word1, scr_w
+	dex
+	beq _lastline
+	; Intermediate line
+	lda #93	; "¦"
+	sta (word1),y	; Y is zero from last loop
+	ldy _w
+	dey
+	sta (word1),y	;
+	lda #scr(' ')
+_il	dey
+	beq _ild
+	sta (word1),y
+	jmp _il
+_ild
+	jmp _i
+
+_lastline
+	; last line
+	ldy _w
+	dey
+	lda #75	; "╯"
+	sta (word1),y
+	lda #64	; "─"
+_ll	dey
+	beq _lld
+	sta (word1),y
+	jmp _ll
+_lld
+	lda #74	; "╰"	
+	sta (word1),y
+	rts
+
+_w	.reserve 1
+_h	.reserve 1
 
 ; ********************************************************************
 ; *** Playfield routines
@@ -1070,6 +1228,22 @@ _l  lda (word1),y
 	sta (word2),y
 	rts
 
+; Fill memory block.
+; ------------------
+; Input: 
+;   word1: mem address
+;   A: value to fill memory with
+;   Y: # of bytes to fill (if 0, fills 256 bytes)
+; Output: -
+; Invalidates: Y
+fill_mem:
+	dey
+_l  sta (word1),y
+	dey
+	bne _l
+	sta (word1),y
+	rts
+
 ; Print 16bit uint (inspired by https://www.beebwiki.mdfs.net/Number_output_in_6502_machine_code)
 ; ----------------
 ; Input:
@@ -1159,6 +1333,7 @@ cur_tetromino_x:    .reserve 1
 cur_tetromino_y:    .reserve 1
 cur_tetromino:      .reserve 4*4    ; 16 bytes for data
 next_tetromino:     .reserve 1
+quit_flag			.reserve 1
 
 ; ********************************************************************
 ; *** Static data
