@@ -78,10 +78,128 @@ inital_fall_delay	.equ	30
 
 	.include "startup.i"
 	
+	; fix scroll text overlap
+	set16i word1, scroller
+	set16i word2, scroller_overlap
+	ldy #scr_w
+	jsr copy_mem
+
 	jsr init_random
+_l	jsr title
+	lda quit_flag
+	bne _quit
 	jsr main_game
+	jmp _l
+_quit
 	rts
 
+; ********************************************************************
+; *** TITLE SCREEN
+; ********************************************************************
+title_mode	.reserve 1	; 0 == controls, -1 == hiscores
+title_cycle_cnt	.reserve 1
+title
+	; prepare hiscores screen in screen_buf
+	set16i word1, title_hiscores
+	set16i word2, screen_buf
+	set16i word3, 16*scr_w
+	jsr decrunch
+
+	set16i word1, title_logo
+	set16i word2, vram
+	set16i word3, 8*scr_w
+	jsr decrunch
+
+	lda #0
+	sta title_mode
+	sta title_cycle_cnt
+	set16i scroll_pos, scroller_prefix
+	set16i word1, title_controls
+	set16i word2, vram+8*scr_w
+	set16i word3, 16*scr_w
+	jsr decrunch
+
+	jsr wait_no_key
+
+_l	jsr wait_vbl
+	inc title_cycle_cnt
+
+	lda title_cycle_cnt
+	and #$f
+	bne _no_scroll
+	jsr title_do_scroll
+_no_scroll
+	lda title_cycle_cnt
+	bne _no_flip_mode
+	jsr title_flip_mode
+_no_flip_mode
+	lda curkey
+	cmp #$ff
+	beq _l
+	cmp #key_quit
+	beq _quit_to_basic
+	jmp title_begin_game
+_quit_to_basic
+	; run/stop pressed, return to basic
+	lda #1
+	sta quit_flag
+	rts
+
+title_flip_mode:
+	lda title_mode
+	eor #$ff
+	sta title_mode
+	bne _show_hiscores
+	; show hiscores
+	set16i word1, title_controls
+	set16i word2, vram+8*scr_w
+	set16i word3, 16*scr_w
+	jmp decrunch	
+_show_hiscores
+	set16i word1, screen_buf
+	set16i word2, vram+8*scr_w
+	; copy 16 lines == 640 bytes
+	ldy #0
+	jsr	copy_mem
+	inc word1+1
+	inc word2+1
+	ldy #0
+	jsr	copy_mem
+	inc word1+1
+	inc word2+1
+	ldy #128
+	jmp	copy_mem
+
+title_do_scroll
+	set16m word1, scroll_pos
+	set16i word2, vram+24*scr_w
+	ldy #40
+	jsr copy_mem
+	inc16 scroll_pos
+	lda scroll_pos
+	cmp #<scroller_overlap
+	beq _maybe_end
+	rts
+_maybe_end
+	lda scroll_pos+1
+	cmp #>scroller_overlap
+	beq _scroll_end_reached
+	rts
+_scroll_end_reached
+	set16i scroll_pos, scroller
+	rts
+
+title_begin_game
+	jsr wait_no_key
+	lda #0
+	sta quit_flag
+	rts
+
+scroll_pos	.reserve 2
+scroller_prefix	.reserve scr_w, scr(' ')
+scroller	.byte scr("welcome to yet another version of tetris, this time for our beloved commodore pet :-) press any key to start the game, or <run/stop> to exit to basic. enjoy!            ")
+scroller_len	.equ * - scroller
+scroller_overlap .reserve 40
 
 ; ********************************************************************
 ; *** MAIN GAME LOOP
@@ -148,7 +266,6 @@ _handlers
 _cont
 	lda quit_flag
 	beq _c2
-	; TODO JUMP TITLE
 	rts
 
 _c2
@@ -516,9 +633,7 @@ _noquit
 _cont
 	sta quit_flag
 
-_w2	lda curkey
-	cmp #$ff
-	bne _w2
+	jsr wait_no_key
 	jsr restore_screen
 
 	rts
@@ -1311,6 +1426,16 @@ _tens
 	.word 1000
 	.word 10000
 
+; Wait until no key is pressed
+; --------------------------
+; Input: -
+; Output: -
+; Invalidates: A
+wait_no_key
+	lda curkey
+	cmp #$ff
+	bne wait_no_key
+	rts
 
 ; ********************************************************************
 ; *** Variables
