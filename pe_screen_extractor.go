@@ -14,6 +14,7 @@ var (
 	flagIn      = flag.String("in", "", "Input file")
 	flagOut     = flag.String("out", "", "Output file")
 	flagScreens = flag.String("screens", "", "Screens to process")
+	flagDumpPE  = flag.String("dump_pe", "", "File to dump deobfuscated PE file to")
 )
 
 const rleMarker = 0
@@ -149,6 +150,9 @@ func main() {
 	json.Unmarshal(b, &peFile)
 
 	data := deobfuscate(peFile["data"].(string))
+	if *flagDumpPE != "" {
+		ioutil.WriteFile(*flagDumpPE, []byte(data), 0644)
+	}
 
 	var peData map[string]interface{}
 	json.Unmarshal([]byte(data), &peData)
