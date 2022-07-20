@@ -14,7 +14,7 @@ run: ${PROGRAM}
 	xpet >/dev/null -model 2001 ${PROGRAM}
 
 screens.asm: pe_screen_extractor screens.pe
-	./pe_screen_extractor -in=screens.pe -out=screens.asm -screens=main_screen,title_screen,hiscores_screen
+	./pe_screen_extractor -in=screens.pe -out=screens.asm -screens=main_screen,title_logo,title_controls,title_hiscores -dump_pe=SCREENS_DUMP
 
 pe_screen_extractor: pe_screen_extractor.go
 	go build pe_screen_extractor.go
