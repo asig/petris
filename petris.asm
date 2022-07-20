@@ -105,6 +105,61 @@ title
 	set16i word3, 16*scr_w
 	jsr decrunch
 
+	set16i word3, hiscores
+	set16i word2, screen_buf+4*scr_w+6
+
+	ldx #10
+_hs_loop
+	txa
+	pha
+
+	; print score
+	ldy #0
+	lda (word3),y
+	sta word1
+	iny
+	lda (word3),y
+	sta word1+1
+	jsr print_uint16
+
+	; print score
+	ldy #2
+	lda (word3),y
+	sta word1
+	iny
+	lda (word3),y
+	sta word1+1
+	add16i word2, 6
+	jsr print_uint16
+
+	; print level
+	ldy #4
+	lda (word3),y
+	sta word1
+	lda #0
+	sta word1+1
+	add16i word2, 6
+	ldy #4  ; 3 digits
+	jsr print_uint16_lp1
+
+	; print name
+	ldy #5
+	sub16i word2, 1	; == +4 - 5
+_l2	lda (word3),y
+	sta (word2),y
+	iny
+	cpy #22
+	bne _l2
+	
+	add16i word3, 32	; size of 1 hiscore record
+	add16i word2, 24 + 5	; move to next line on screen, compensate for -5 above
+	pla
+	txa
+	dex
+	beq _hs_done
+	jmp _hs_loop
+_hs_done
+
 	set16i word1, title_logo
 	set16i word2, vram
 	set16i word3, 8*scr_w
@@ -1459,6 +1514,28 @@ cur_tetromino_y:    .reserve 1
 cur_tetromino:      .reserve 4*4    ; 16 bytes for data
 next_tetromino:     .reserve 1
 quit_flag			.reserve 1
+
+hiscores:
+	.word 10000, 100
+	.byte 10, scr("12345678901234567          ")
+	.word 9000, 90
+	.byte 9, scr("12345678901234567          ")
+	.word 8000, 80
+	.byte 8, scr("12345678901234567          ")
+	.word 7000, 70
+	.byte 7, scr("12345678901234567          ")
+	.word 6000, 60
+	.byte 6, scr("12345678901234567          ")
+	.word 5000, 50
+	.byte 5, scr("12345678901234567          ")
+	.word 4000, 40
+	.byte 4, scr("12345678901234567          ")
+	.word 3000, 30
+	.byte 3, scr("12345678901234567          ")
+	.word 2000, 20
+	.byte 2, scr("12345678901234567          ")
+	.word 1000, 10
+	.byte 1, scr("12345678901234567          ")
 
 ; ********************************************************************
 ; *** Static data
