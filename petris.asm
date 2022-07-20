@@ -272,6 +272,9 @@ main_game:
 	set16i word3, 1000
 	jsr decrunch
 
+	jsr print_level
+	jsr print_scores
+
 	jsr new_tetromino
 	lda #inital_fall_delay
 	sta cur_fall_delay
@@ -335,11 +338,6 @@ _c2
 	jsr print_uint16_lp1
 	.endif
 
-;	; Update scores and stats
-;	jsr print_scores
-;	jsr print_stats
-;	jsr print_next_tetromino
-
 	jsr test_tetromino_fits
 	bcc _gamenotover
 	jmp game_over
@@ -398,17 +396,6 @@ _fall_cont
 
 	jmp _loop
 
-;	jsr print_scores
-;	jsr print_stats
-;	jsr print_next_tetromino
-;
-;	jsr set_tetromino_in_pf
-;	jsr draw_playfield
-;	jsr remove_tetromino_from_pf
-;
-;	rts
-
-
 lines_removed:	.reserve 1
 lines_to_go:	.reserve 1
 ; Find and remove complete lines, update scores, update screen
@@ -442,6 +429,8 @@ _prevline
 	adc lines_removed
 	sta lines
 	jsr print_scores
+
+	; TODO Check if level needs to be changed
 	rts
 
 _clearline
@@ -699,6 +688,9 @@ _cnt	.reserve	1
 ; ********************************************************************
 
 init_scores_and_next_tetromino:
+	lda #1
+	sta level
+
 	; Clear all the scores and stats
 	ldx #(9*2)-1    ; 9x16 bit    
 	lda #0
@@ -726,6 +718,14 @@ print_scores:
 
 	set16m word1, lines
 	set16i word2, vram_stats_lines
+	jmp print_uint16
+
+print_level:	
+	lda level
+	sta word1
+	lda #0
+	sta word1+1
+	set16i word2, vram_stats_level
 	jmp print_uint16
 
 print_stats:
