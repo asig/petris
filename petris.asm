@@ -423,14 +423,29 @@ _prevline
 	bne _scanline
 
 	; We reached the top.
-	; Update lines removed and score accordingly
+	; Update lines removed...
+	lda lines_removed
+	beq _no_lines_removed
+	tax	; save "lines removed" in X for later
 	clc
-	lda lines
-	adc lines_removed
+	adc lines
 	sta lines
+	; ... and score accordingly
+	txa ; restore "lines removed"
+	asl	; multiply by 2
+	tax	; X contains now the index+2 of the score to add
+	clc
+	lda score
+	adc score_increments-2, x
+	sta score
+	lda score+1
+	adc score_increments-1, x
+	sta score+1
 	jsr print_scores
 
 	; TODO Check if level needs to be changed
+
+_no_lines_removed
 	rts
 
 _clearline
@@ -521,6 +536,7 @@ _l2	lda (word2),y
 
 ; Show game over
 game_over:
+	; TODO FIXME!!!!
 	rts
 
 handle_fall:
@@ -690,6 +706,11 @@ _cnt	.reserve	1
 init_scores_and_next_tetromino:
 	lda #1
 	sta level
+
+	set16i score_increments, 40	; 1 line
+	set16i score_increments+2, 100	; 2 lines
+	set16i score_increments+4, 300	; 3 lines
+	set16i score_increments+6, 1200	; 4 lines
 
 	; Clear all the scores and stats
 	ldx #(9*2)-1    ; 9x16 bit    
@@ -1502,6 +1523,8 @@ score:  .reserve 2
 lines:  .reserve 2
 stats:  .reserve 7*2    ; Same order as in "tetrominos" list
 
+score_increments	.reserve 4*2	; score increments for 1, 2, 3, and 4 removed lines
+
 playfield:	.reserve (pf_w+2+2)*(pf_h+2+2) , scr('A')
 ; The following 2 fields are used for line blinking	
 pf_line_buf		.reserve pf_w+4
@@ -1607,6 +1630,6 @@ tetromino_o:
 
 screen_buf	.equ	*	; Screen buffer at the end of the file so that we don't have to actually store the bytes
 
-	.if * - 1000 >= $8000
+	.if (* + 1000) >= $2000
 	.fail "Program too big!"
 	.endif
