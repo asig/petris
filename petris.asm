@@ -539,8 +539,115 @@ _l2	lda (word2),y
 
 
 ; Show game over
+game_over_line1	.byte scr("   ### game over! ###   ")
+game_over_line_len	.equ * - game_over_line1
+game_over_line3 .byte scr("you didn't make it into ")
+game_over_line4 .byte scr("the hall of fame :-(    ")
+game_over_line6 .byte scr("press a key to continue.")
+game_over_box_x	.equ	(40-game_over_line_len-4)/2
+game_over_box_y	.equ	8
+game_over_address	.equ vram + (game_over_box_y+1)*scr_w+game_over_box_x+2
+
 game_over:
+	; check whether the user made it into the hiscores table
+	ldx #0
+	set16i word1, hiscores
+_compare_hiscore_row
+	lda word1+1
+	cmp score+1
+	bcs _next_row	; current hibyte is > score
+	bcc _row_found	; hibyte is < score
+	; hi-byte is equal, compare low byte
+	lda word1
+	cmp score
+	bcs _next_row	; current lowbyte is > score
+	bcc _row_found	; lowbyte is < score
+	; score is equal to hiscore entry, compare lines
+	lda word1+3
+	cmp lines+1
+	bcs _next_row	; current hibyte is > lines
+	bcc _row_found	; hibyte is < levels
+	; hi-byte is equal, compare low byte
+	lda word1+2
+	cmp lines
+	bcs _next_row	; current lowbyte is > lines
+	bcc _row_found	; lowbyte is < lines
+	; score and lines are equal, move on to next row
+_next_row
+	inx
+	cpx #10
+	beq _no_hiscore
+	; move on to next hiscore entry
+	add16i word1, 32
+	jmp _compare_hiscore_row
+_row_found
+	; row to insert is at word1, rank is X+1
+	; save address to insert, and copy everything else down
+	set16m word3, word1
+	set16m word2, word1
+_copy_row
+	add16i word2, 32
+	ldy #32
+	jsr copy_mem
+	inx
+	cpy #10
+	beq _copy_done
+	add16i word1, 32
+	jmp _copy_row
+_copy_done
+
+	; Show game over screen and let user type a name
 	; TODO FIXME!!!!
+
+
+_no_hiscore
+	set16i word1, vram + game_over_box_y*scr_w+game_over_box_x
+	ldx #8
+	ldy #game_over_line_len + 4
+	jsr draw_box
+	; print text lines
+	set16i word1, game_over_line3
+	set16i word2, game_over_address+2*scr_w
+	ldy #game_over_line_len
+	jsr copy_mem
+
+	set16i word1, game_over_line4
+	set16i word2, game_over_address+3*scr_w
+	ldy #game_over_line_len
+	jsr copy_mem
+
+	set16i word1, game_over_line6
+	set16i word2, game_over_address+5*scr_w
+	ldy #game_over_line_len
+	jsr copy_mem
+
+	lda #0
+	sta byte1
+_l	lda curkey
+	cmp #$ff
+	bne _done
+	jsr wait_vbl
+	inc byte1
+	inc byte1
+	inc byte1
+	inc byte1
+	bmi _l2
+	; bit 7 not set,  print title...
+	set16i word1, game_over_line1
+	set16i word2, game_over_address
+	ldy #game_over_line_len
+	jsr copy_mem
+	jmp _l
+_l2 set16i word1, game_over_address
+	ldy #game_over_line_len
+	lda #scr(' ')
+	jsr fill_mem
+	jmp _l
+_done
+_w2	lda curkey
+	cmp #$ff
+	bne _w2
+	jsr restore_screen
 	rts
 
 handle_fall:
@@ -603,9 +710,9 @@ _nofit
 
 pause_text .byte scr("*** paused. ***")
 pause_text_len	.equ * - pause_text
-pause_address	.equ vram + (box_y+2)*scr_w+box_x+2
-box_x	.equ	(40-pause_text_len-4)/2
-box_y	.equ	10
+pause_address	.equ vram + (pause_box_y+2)*scr_w+pause_box_x+2
+pause_box_x	.equ	(40-pause_text_len-4)/2
+pause_box_y	.equ	10
 handle_pause:
 	; wait for the key to be released
 _w	lda curkey
@@ -613,7 +720,7 @@ _w	lda curkey
 	bne _w
 
 	jsr save_screen
-	set16i word1, vram + box_y*scr_w+box_x
+	set16i word1, vram + pause_box_y*scr_w+pause_box_x
 	ldx #5
 	ldy #pause_text_len + 4
 	jsr draw_box
@@ -844,9 +951,7 @@ _fl	dey
 _fld
 	lda #85	; "╭"	
 	sta (word1),y
-	
-	dex
-	; no "dex" after first line, because we terminate when X == 0
+	dex		; first line drawn
 
 _i	add16i word1, scr_w
 	dex
