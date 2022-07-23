@@ -47,7 +47,8 @@ vram_stats_t_z      .equ    vram + 21 * scr_w + 28
 via	.equ $E840
 via_portb	.equ via
 
-curkey	.equ $203
+curkey				.equ $203	; Currently pressed key
+keyboard_buf_size	.equ $20d	; No. of characters in keyboard buffer
 
 ; Zeropage addresses used to pass params
 word1   .equ    $54 ; $b8
@@ -91,6 +92,9 @@ _l	jsr title
 	jsr main_game
 	jmp _l
 _quit
+	; Make sure the keyboard buffer is empty
+	lda #0
+	sta keyboard_buf_size
 	rts
 
 ; ********************************************************************
@@ -339,9 +343,9 @@ _c2
 	.endif
 
 	jsr test_tetromino_fits
-	bcc _gamenotover
+	bcc _game_not_over
 	jmp game_over
-_gamenotover
+_game_not_over
 
 	dec cur_fall_cnt
 	bne _fall_cont
