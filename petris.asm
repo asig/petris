@@ -50,9 +50,9 @@ via_portb	.equ via
 curkey				.equ $203	; Currently pressed key
 keyboard_buf_size	.equ $20d	; No. of characters in keyboard buffer
 
-; Zeropage addresses used to pass params
-word1   .equ    $54 ; $b8
-word2   .equ    $56 ; $ba
+; Zeropage addresses used to pass params, or as temporary variables
+word1   .equ    $54
+word2   .equ    $56
 word3	.equ	$58
 byte1   .equ    $5a
 byte2   .equ    $5b
@@ -61,7 +61,7 @@ byte2   .equ    $5b
 pf_w    .equ    10
 pf_h    .equ    22
 
-; Key codes
+; Key codes using generic names for easier redefinition if necessary
 key_left	.equ 48 ; 'A' key
 key_right	.equ 47	; 'D' key
 key_down	.equ 40	; 'S' key
@@ -70,8 +70,15 @@ key_rotate	.equ 27	; Return key
 key_pause	.equ 52	; 'P' key
 key_quit	.equ 4	; Run/stop key
 
+; Scan codes for hiscore input handling
+scancode_delete	.equ 65
+scancode_return	.equ 27
+
 ; Default initial fall delay
 inital_fall_delay	.equ	30
+
+; Maximal name length in hiscores
+max_hs_name_len	.equ 17
 
 ; ********************************************************************
 ; *** ENTRY POINT
@@ -100,8 +107,8 @@ _quit
 ; ********************************************************************
 ; *** TITLE SCREEN
 ; ********************************************************************
-title_mode	.reserve 1	; 0 == controls, -1 == hiscores
-title_cycle_cnt	.reserve 1
+title_mode		.equ byte1	; 0 == controls, !=0 == hiscores
+title_cycle_cnt	.equ byte2
 title
 	; prepare hiscores screen in screen_buf
 	set16i word1, title_hiscores
@@ -548,6 +555,10 @@ game_over_box_x	.equ	(40-game_over_line_len-4)/2
 game_over_box_y	.equ	8
 game_over_address	.equ vram + (game_over_box_y+1)*scr_w+game_over_box_x+2
 
+game_over_hs_line3	.byte scr("well done! enter your   ")
+game_over_hs_line4	.byte scr("name:  _________________")
+game_over_hs_textpos	.equ game_over_address + 4*scr_w+7
+
 game_over:
 	; check whether the user made it into the hiscores table
 	ldx #0
@@ -576,7 +587,9 @@ _compare_hiscore_row
 _next_row
 	inx
 	cpx #10
-	beq _no_hiscore
+	bne _is_hiscore
+	jmp no_hiscore
+_is_hiscore
 	; move on to next hiscore entry
 	add16i word1, 32
 	jmp _compare_hiscore_row
@@ -595,12 +608,82 @@ _copy_row
 	add16i word1, 32
 	jmp _copy_row
 _copy_done
+	; save score,  lines, and level at hiscore pos
+	set16m word1, score
+	set16m word1+2, lines
+	lda level
+	sta word1+5
 
-	; Show game over screen and let user type a name
-	; TODO FIXME!!!!
+	; save insert position in word3
+	clc
+	lda word1
+	adc #5
+	sta word3
+	lda word1+1
+	adc #0
+	sta word3+1
 
+	; Show game over screen...
+	set16i word1, vram + game_over_box_y*scr_w+game_over_box_x
+	ldx #8
+	ldy #game_over_line_len + 4
+	jsr draw_box
 
-_no_hiscore
+	; print text lines
+	set16i word1, game_over_line1
+	set16i word2, game_over_address
+	ldy #game_over_line_len
+	jsr copy_mem
+
+	set16i word1, game_over_hs_line3
+	set16i word2, game_over_address+2*scr_w
+	ldy #game_over_line_len
+	jsr copy_mem
+
+	set16i word1, game_over_hs_line4
+	set16i word2, game_over_address+3*scr_w
+	ldy #game_over_line_len
+	jsr copy_mem
+
+	; ...let user enter their name
+	set16i word1, game_over_hs_textpos
+	ldy #0
+	lda #0
+	sta last_key
+_enter_hs_loop
+	lda curkey
+	cmp last_key
+	beq _enter_hs_loop
+	
+	sta last_key
+
+	cmp #$ff
+	beq _enter_hs_loop	; No key pressed
+	cmp #scancode_delete
+	bne _c2
+	; delete pressed
+	cpy #0	; already at the beginning?
+	beq _enter_hs_loop	; yes
+	dey	; otherwise, go one back
+	lda #scr(' ')
+	sta (word1),y
+	sta (word3),y	; and overwrite hiscores and display
+	jmp _enter_hs_loop
+_c2	cmp #scancode_return
+	bne _c3
+	; return pressed
+	rts
+_c3	; FIXME check for  printable characters
+	lda #scr('a')
+	sta (word1),y
+	sta (word3),y
+	iny
+	cpy #max_hs_name_len
+	bne _enter_hs_loop
+	dey
+	jmp _enter_hs_loop
+
+no_hiscore
 	set16i word1, vram + game_over_box_y*scr_w+game_over_box_x
 	ldx #8
 	ldy #game_over_line_len + 4
@@ -647,7 +730,6 @@ _done
 _w2	lda curkey
 	cmp #$ff
 	bne _w2
-	jsr restore_screen
 	rts
 
 handle_fall:
@@ -713,6 +795,7 @@ pause_text_len	.equ * - pause_text
 pause_address	.equ vram + (pause_box_y+2)*scr_w+pause_box_x+2
 pause_box_x	.equ	(40-pause_text_len-4)/2
 pause_box_y	.equ	10
+pause_cnt	.equ	byte1
 handle_pause:
 	; wait for the key to be released
 _w	lda curkey
@@ -725,15 +808,15 @@ _w	lda curkey
 	ldy #pause_text_len + 4
 	jsr draw_box
 	lda #0
-	sta _cnt
+	sta pause_cnt
 _l	lda curkey
 	cmp #$ff
 	bne _done
 	jsr wait_vbl
-	inc _cnt
-	inc _cnt
-	inc _cnt
-	inc _cnt
+	inc pause_cnt
+	inc pause_cnt
+	inc pause_cnt
+	inc pause_cnt
 	bmi _l2
 	; bit 7 not set,  print "pause"...
 	set16i word1, pause_text
@@ -753,13 +836,12 @@ _w2	lda curkey
 	jsr restore_screen
 	rts
 
-_cnt	.reserve	1
-
 quit_text .byte scr("*** quit? (y/n) ***")
 quit_text_len	.equ * - quit_text
 quit_address	.equ vram + (qbox_y+2)*scr_w+qbox_x+2
 qbox_x	.equ	(40-quit_text_len-4)/2
 qbox_y	.equ	10
+quit_cnt	.equ byte1
 handle_quit:
 	; wait for the key to be released
 _w	lda curkey
@@ -773,17 +855,17 @@ _w	lda curkey
 	jsr draw_box
 
 	lda #0
-	sta _cnt
+	sta quit_cnt
 _l	lda curkey
 	cmp #54
 	beq _quit
 	cmp #22
 	beq _noquit
 	jsr wait_vbl
-	inc _cnt
-	inc _cnt
-	inc _cnt
-	inc _cnt
+	inc quit_cnt
+	inc quit_cnt
+	inc quit_cnt
+	inc quit_cnt
 	bmi _l2
 	; bit 7 not set,  print "quit"...
 	set16i word1, quit_text
@@ -808,7 +890,6 @@ _cont
 	jsr restore_screen
 
 	rts
-_cnt	.reserve	1
 
 ; ********************************************************************
 ; *** Init
@@ -1648,25 +1729,25 @@ next_tetromino:     .reserve 1
 quit_flag			.reserve 1
 
 hiscores:
-	.word 10000, 100
+	.word 1000, 1	0
 	.byte 10, scr("12345678901234567          ")
-	.word 9000, 90
+	.word 900, 9
 	.byte 9, scr("12345678901234567          ")
-	.word 8000, 80
+	.word 800, 8
 	.byte 8, scr("12345678901234567          ")
-	.word 7000, 70
+	.word 700, 7
 	.byte 7, scr("12345678901234567          ")
-	.word 6000, 60
+	.word 600, 6
 	.byte 6, scr("12345678901234567          ")
-	.word 5000, 50
+	.word 500, 5
 	.byte 5, scr("12345678901234567          ")
-	.word 4000, 40
+	.word 400, 4
 	.byte 4, scr("12345678901234567          ")
-	.word 3000, 30
+	.word 300, 3
 	.byte 3, scr("12345678901234567          ")
-	.word 2000, 20
+	.word 200, 2
 	.byte 2, scr("12345678901234567          ")
-	.word 1000, 10
+	.word 100, 1
 	.byte 1, scr("12345678901234567          ")
 
 ; ********************************************************************
