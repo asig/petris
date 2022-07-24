@@ -78,7 +78,7 @@ scancode_return	.equ 27
 inital_fall_delay	.equ	30
 
 ; Maximal name length in hiscores
-max_hs_name_len	.equ 17
+max_hs_name_len	.equ 11
 
 ; ********************************************************************
 ; *** ENTRY POINT
@@ -117,7 +117,7 @@ title
 	jsr decrunch
 
 	set16i word3, hiscores
-	set16i word2, screen_buf+4*scr_w+6
+	set16i word2, screen_buf+4*scr_w+9
 
 	ldx #10
 _hs_loop
@@ -159,10 +159,10 @@ _hs_loop
 _l2	lda (word3),y
 	sta (word2),y
 	iny
-	cpy #22
+	cpy #max_hs_name_len+5
 	bne _l2
 	
-	add16i word3, 32	; size of 1 hiscore record
+	add16i word3, hiscore_record_size
 	add16i word2, 24 + 5	; move to next line on screen, compensate for -5 above
 	pla
 	txa
@@ -556,33 +556,45 @@ game_over_box_y	.equ	8
 game_over_address	.equ vram + (game_over_box_y+1)*scr_w+game_over_box_x+2
 
 game_over_hs_line3	.byte scr("well done! enter your   ")
-game_over_hs_line4	.byte scr("name:  _________________")
-game_over_hs_textpos	.equ game_over_address + 4*scr_w+7
+game_over_hs_line4	.byte scr("name: ...........       ")
+game_over_hs_textpos	.equ game_over_address + 3*scr_w+6
 
 game_over:
 	; check whether the user made it into the hiscores table
 	ldx #0
 	set16i word1, hiscores
 _compare_hiscore_row
-	lda word1+1
+	ldy #1
+	lda (word1),y
 	cmp score+1
+	beq _score_hibyte_equal
 	bcs _next_row	; current hibyte is > score
 	bcc _row_found	; hibyte is < score
+_score_hibyte_equal
 	; hi-byte is equal, compare low byte
-	lda word1
+	ldy #0
+	lda (word1),y
 	cmp score
+	beq _score_lowbyte_equal
 	bcs _next_row	; current lowbyte is > score
 	bcc _row_found	; lowbyte is < score
+_score_lowbyte_equal
 	; score is equal to hiscore entry, compare lines
-	lda word1+3
+	ldy #3
+	lda (word1),y
 	cmp lines+1
+	beq _lines_hibyte_equal
 	bcs _next_row	; current hibyte is > lines
 	bcc _row_found	; hibyte is < levels
+_lines_hibyte_equal
 	; hi-byte is equal, compare low byte
-	lda word1+2
+	ldy #2
+	lda (word1),y
 	cmp lines
+	beq _lines_lowbyte_equal
 	bcs _next_row	; current lowbyte is > lines
 	bcc _row_found	; lowbyte is < lines
+_lines_lowbyte_equal
 	; score and lines are equal, move on to next row
 _next_row
 	inx
@@ -591,37 +603,49 @@ _next_row
 	jmp no_hiscore
 _is_hiscore
 	; move on to next hiscore entry
-	add16i word1, 32
+	add16i word1, hiscore_record_size
 	jmp _compare_hiscore_row
 _row_found
 	; row to insert is at word1, rank is X+1
 	; save address to insert, and copy everything else down
 	set16m word3, word1
 	set16m word2, word1
-_copy_row
-	add16i word2, 32
-	ldy #32
-	jsr copy_mem
+	add16i word2, hiscore_record_size
+	; compute how many bytes to copy
+	lda #0
+	clc
+_compute_copy_size
 	inx
-	cpy #10
+	cpx #10
+	beq _compute_copy_size_done
+	adc #hiscore_record_size
+	jmp _compute_copy_size
+_compute_copy_size_done
+	cmp #0
 	beq _copy_done
-	add16i word1, 32
-	jmp _copy_row
+	; finally, copy stuff
+	tay
+	jsr copy_mem
 _copy_done
 	; save score,  lines, and level at hiscore pos
-	set16m word1, score
-	set16m word1+2, lines
+	lda score
+	ldy #0
+	sta (word3),y
+	lda score+1
+	iny
+	sta (word3),y
+	lda lines
+	iny
+	sta (word3),y
+	lda lines+1
+	iny
+	sta (word3),y
 	lda level
-	sta word1+5
+	iny
+	sta (word3),y
 
-	; save insert position in word3
-	clc
-	lda word1
-	adc #5
-	sta word3
-	lda word1+1
-	adc #0
-	sta word3+1
+	; update insert pos to point to the actual name
+	add16i word3, 5
 
 	; Show game over screen...
 	set16i word1, vram + game_over_box_y*scr_w+game_over_box_x
@@ -651,10 +675,13 @@ _copy_done
 	lda #0
 	sta last_key
 _enter_hs_loop
+	; draw "cursor"
+	jsr _determine_cursor_type
+	ora #%10000000
+	sta (word1),y
 	lda curkey
 	cmp last_key
-	beq _enter_hs_loop
-	
+	beq _enter_hs_loop	
 	sta last_key
 
 	cmp #$ff
@@ -662,26 +689,37 @@ _enter_hs_loop
 	cmp #scancode_delete
 	bne _c2
 	; delete pressed
+	jsr _determine_cursor_type
+	sta (word1),y	; delete "cursor"
 	cpy #0	; already at the beginning?
 	beq _enter_hs_loop	; yes
 	dey	; otherwise, go one back
+	lda #scr('.')
+	sta (word1),y	; erase screen
 	lda #scr(' ')
-	sta (word1),y
-	sta (word3),y	; and overwrite hiscores and display
+	sta (word3),y	; and overwrite hiscores
 	jmp _enter_hs_loop
 _c2	cmp #scancode_return
 	bne _c3
 	; return pressed
 	rts
-_c3	; FIXME check for  printable characters
+_c3	; FIXME check for printable characters
+	cpy #max_hs_name_len
+	beq _enter_hs_loop
 	lda #scr('a')
 	sta (word1),y
 	sta (word3),y
 	iny
-	cpy #max_hs_name_len
-	bne _enter_hs_loop
-	dey
 	jmp _enter_hs_loop
+
+_determine_cursor_type
+	cpy #max_hs_name_len
+	bcs _blank_cursor
+	lda #scr('.')
+	rts
+_blank_cursor
+	lda #scr(' ')
+	rts
 
 no_hiscore
 	set16i word1, vram + game_over_box_y*scr_w+game_over_box_x
@@ -1729,26 +1767,32 @@ next_tetromino:     .reserve 1
 quit_flag			.reserve 1
 
 hiscores:
-	.word 1000, 1	0
-	.byte 10, scr("12345678901234567          ")
+	.word 1000, 1
+	.byte 10, scr("12345678901")
 	.word 900, 9
-	.byte 9, scr("12345678901234567          ")
+	.byte 9, scr("12345678901")
 	.word 800, 8
-	.byte 8, scr("12345678901234567          ")
+	.byte 8, scr("12345678901")
 	.word 700, 7
-	.byte 7, scr("12345678901234567          ")
+	.byte 7, scr("12345678901")
 	.word 600, 6
-	.byte 6, scr("12345678901234567          ")
+	.byte 6, scr("12345678901")
 	.word 500, 5
-	.byte 5, scr("12345678901234567          ")
+	.byte 5, scr("12345678901")
 	.word 400, 4
-	.byte 4, scr("12345678901234567          ")
+	.byte 4, scr("12345678901")
 	.word 300, 3
-	.byte 3, scr("12345678901234567          ")
+	.byte 3, scr("12345678901")
 	.word 200, 2
-	.byte 2, scr("12345678901234567          ")
+	.byte 2, scr("12345678901")
 	.word 100, 1
-	.byte 1, scr("12345678901234567          ")
+	.byte 1, scr("12345678901")
+hiscores_size	.equ * - hiscores
+	.if hiscores_size != 10*16
+	.fail "Hiscores size is != 160"
+	.endif
+
+hiscore_record_size	.equ	hiscores_size/10
 
 ; ********************************************************************
 ; *** Static data
