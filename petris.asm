@@ -165,7 +165,7 @@ _l2	lda (word3),y
 	add16i word3, hiscore_record_size
 	add16i word2, 24 + 5	; move to next line on screen, compensate for -5 above
 	pla
-	txa
+	tax
 	dex
 	beq _hs_done
 	jmp _hs_loop
@@ -627,7 +627,7 @@ _compute_copy_size_done
 	tay
 	jsr copy_mem
 _copy_done
-	; save score,  lines, and level at hiscore pos
+	; save score,  lines, and level at hiscore pos, and fill name with ' '
 	lda score
 	ldy #0
 	sta (word3),y
@@ -643,6 +643,14 @@ _copy_done
 	lda level
 	iny
 	sta (word3),y
+	lda #scr(' ')
+_hs_insert_loop
+	iny
+	cpy #hiscore_record_size
+	beq _hs_insert_done
+	sta (word3),y
+	jmp _hs_insert_loop
+_hs_insert_done
 
 	; update insert pos to point to the actual name
 	add16i word3, 5
@@ -753,7 +761,7 @@ _l	lda curkey
 	inc byte1
 	inc byte1
 	bmi _l2
-	; bit 7 not set,  print title...
+	; bit 7 not set, print title...
 	set16i word1, game_over_line1
 	set16i word2, game_over_address
 	ldy #game_over_line_len
