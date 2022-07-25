@@ -47,6 +47,7 @@ vram_stats_t_z      .equ    vram + 21 * scr_w + 28
 via	.equ $E840
 via_portb	.equ via
 
+keyboard_decode_table	.equ	$e75c	
 curkey				.equ $203	; Currently pressed key
 keyboard_buf_size	.equ $20d	; No. of characters in keyboard buffer
 
@@ -711,10 +712,13 @@ _c2	cmp #scancode_return
 	bne _c3
 	; return pressed
 	rts
-_c3	; FIXME check for printable characters
-	cpy #max_hs_name_len
+_c3	cpy #max_hs_name_len
 	beq _enter_hs_loop
-	lda #scr('a')
+	; convert the scancode to petscii and then to screen codes
+	tax
+	lda keyboard_decode_table-1,x
+	jsr petscii_to_screencode	
+	; store the screencode  in hiscores and on screen
 	sta (word1),y
 	sta (word3),y
 	iny
@@ -1495,6 +1499,47 @@ rotate_buf:
 ; ********************************************************************
 
 	.include "random.asm"
+
+; Convert PETSCII to screen code. See https://sta.c64.org/cbm64pettoscr.html
+; Input:
+;   A: PETSCII code
+; Ouput:
+;   A: screen code
+petscii_to_screencode
+	cmp #32
+	bcs _c2
+	adc #$80
+	rts
+_c2	cmp #64
+	bcs _c3
+	rts
+_c3	cmp #96
+	bcs _c4
+	sec
+	sbc #64
+	rts
+_c4	cmp #128
+	bcs _c5
+	sec
+	sbc #32
+	rts
+_c5	cmp #160
+	bcs _c6
+	adc #64
+	rts
+_c6	cmp #192
+	bcs _c7
+	sec
+	sbc #64
+	rts
+_c7	cmp #255
+	bcs _c8
+	sec
+	sbc #128
+	rts
+_c8; only 255 is left...
+	lda #94
+	rts
 
 ; "Decrunch" data
 ; Input:
