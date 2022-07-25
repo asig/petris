@@ -118,7 +118,7 @@ title
 	jsr decrunch
 
 	set16i word3, hiscores
-	set16i word2, screen_buf+4*scr_w+9
+	set16i word2, screen_buf+5*scr_w+9
 
 	ldx #10
 _hs_loop
