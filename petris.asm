@@ -76,10 +76,16 @@ scancode_delete	.equ 65
 scancode_return	.equ 27
 
 ; Default initial fall delay
-inital_fall_delay	.equ	30
+inital_fall_delay	.equ	40
 
 ; Maximal name length in hiscores
 max_hs_name_len	.equ 11
+
+; After how many lines a new level start
+default_lines_to_next_level	.equ 10
+
+; Maximal level that can be reached
+max_level	.equ	20
 
 ; ********************************************************************
 ; *** ENTRY POINT
@@ -272,9 +278,13 @@ scroller_overlap .reserve 40
 ; *** MAIN GAME LOOP
 ; ********************************************************************
 last_key	.reserve 1
+is_harddrop	.byte 1
 main_game:
 	lda #0
 	sta quit_flag
+	sta is_harddrop
+	lda #default_lines_to_next_level
+	sta lines_to_next_level
 	jsr init_scores_and_next_tetromino
 	jsr init_playfield
 
@@ -286,12 +296,12 @@ main_game:
 
 	jsr print_level
 	jsr print_scores
+	jsr print_lines
 
 	jsr new_tetromino
 	lda #inital_fall_delay
 	sta cur_fall_delay
 	sta cur_fall_cnt
-
 	lda #$ff
 	sta last_key
 
@@ -369,6 +379,7 @@ _game_not_over
 	; Stone does not fit one row below: add it to the playfield, start a new stone
 	dec cur_tetromino_y
 	jsr set_tetromino_in_pf
+	jsr check_harddrop
 	jsr check_lines
 	jsr new_tetromino
 	jmp _loop
@@ -435,17 +446,12 @@ _prevline
 	bne _scanline
 
 	; We reached the top.
-	; Update lines removed...
+	; Update lines scores
 	lda lines_removed
 	beq _no_lines_removed
-	tax	; save "lines removed" in X for later
-	clc
-	adc lines
-	sta lines
-	; ... and score accordingly
-	txa ; restore "lines removed"
 	asl	; multiply by 2
 	tax	; X contains now the index+2 of the score to add
+	; FIXME: Multiply score by level!
 	clc
 	lda score
 	adc score_increments-2, x
@@ -455,14 +461,23 @@ _prevline
 	sta score+1
 	jsr print_scores
 
-	; TODO Check if level needs to be changed
-
 _no_lines_removed
 	rts
 
 _clearline
+	dec lines_to_next_level
+	bne _no_next_level
+	push16m word1
+	jsr next_level
+	pop16m word1
+	lda #default_lines_to_next_level
+	sta lines_to_next_level
+_no_next_level
 	inc lines_removed
+	inc lines
+
 	; blink the line a few times
+
 	; First, save and clear the current line
 	set16i word2, pf_line_buf
 	ldy #pf_w
@@ -473,9 +488,7 @@ _cploop
 	bne _cploop
 
 	set16i word3, pf_line_empty
-
 	ldx #9
-
 _blinkloop
 	; wait a little
 	txa
@@ -498,6 +511,7 @@ _l1
 	push16m word1
 	push16m word2
 	jsr draw_playfield
+	jsr print_lines
 	pop16m word2
 	pop16m word1
 	popx
@@ -545,6 +559,37 @@ _l2	lda (word2),y
 	pop16m word1
 	jmp _scanline		; see if we need to clear more lines
 
+next_level:
+	lda level
+	cmp #max_level
+	beq _no_level_change
+	inc level
+	lda cur_fall_delay
+	cmp #10	; minimal fall delay
+	bcs _no_delay_change
+	sec
+	sbc #3
+	sta cur_fall_delay
+_no_delay_change
+	jsr print_level
+_no_level_change
+	rts	
+
+check_harddrop:
+	lda is_harddrop
+	bne _cont
+	rts
+_cont
+	; FIXME add 4 points times level
+	clc
+	lda score
+	adc #4
+	sta score
+	lda score+1
+	adc #0
+	sta score+1
+	jsr print_scores
+	rts
 
 ; Show game over
 game_over_line1	.byte scr("   ### game over! ###   ")
@@ -783,6 +828,8 @@ _w2	lda curkey
 	rts
 
 handle_fall:
+	lda #1
+	sta is_harddrop
 _l	inc cur_tetromino_y
 	jsr test_tetromino_fits
 	bcs _nofit
@@ -833,12 +880,21 @@ _nofit
 	rts
 
 handle_rotate:
+	; save old tetromino in screen_buf	set16i word1, rotate_buf in case rotation is blocked
+	set16i word1, cur_tetromino
+	set16i word2, screen_buf
+	ldy #4*4
+	jsr copy_mem
+
 	jsr rotate_cur_left
 	jsr test_tetromino_fits
 	bcs _nofit
 	rts
 _nofit
-	jmp rotate_cur_right
+	set16i word1, screen_buf
+	set16i word2, cur_tetromino
+	ldy #4*4
+	jmp copy_mem
 
 pause_text .byte scr("*** paused. ***")
 pause_text_len	.equ * - pause_text
@@ -977,8 +1033,9 @@ _l2 sta next_tetromino
 print_scores:
 	set16m word1, score
 	set16i word2, vram_stats_score
-	jsr print_uint16
+	jmp print_uint16
 
+print_lines:
 	set16m word1, lines
 	set16i word2, vram_stats_lines
 	jmp print_uint16
@@ -1382,16 +1439,17 @@ _nooverflow
 	ldy #4*4
 	jsr copy_mem
 
-
 	; set position
 	lda #pf_w/2
 	sta cur_tetromino_x
 	lda #0
 	sta cur_tetromino_y
 
-	; Set falling delay and countdown
+	; Set falling delay, countdown, and harddrop
 	lda cur_fall_delay
 	sta cur_fall_cnt
+	lda #0
+	sta is_harddrop
 
 	; Pick a new next tetromino
 	jsr random
@@ -1443,48 +1501,6 @@ rotate_cur_left:
 	sta rotate_buf+8
 	lda cur_tetromino+15
 	sta rotate_buf+12
-
-	set16i word1, rotate_buf
-	set16i word2, cur_tetromino
-	ldy #4*4
-	jmp copy_mem
-
-rotate_cur_right:
-	lda cur_tetromino+0
-	sta rotate_buf+12
-	lda cur_tetromino+1
-	sta rotate_buf+8
-	lda cur_tetromino+2
-	sta rotate_buf+4
-	lda cur_tetromino+3
-	sta rotate_buf+0
-
-	lda cur_tetromino+4
-	sta rotate_buf+13
-	lda cur_tetromino+5
-	sta rotate_buf+9
-	lda cur_tetromino+6
-	sta rotate_buf+5
-	lda cur_tetromino+7
-	sta rotate_buf+1
-
-	lda cur_tetromino+8
-	sta rotate_buf+14
-	lda cur_tetromino+9
-	sta rotate_buf+10
-	lda cur_tetromino+10
-	sta rotate_buf+6
-	lda cur_tetromino+11
-	sta rotate_buf+2
-
-	lda cur_tetromino+12
-	sta rotate_buf+15
-	lda cur_tetromino+13
-	sta rotate_buf+11
-	lda cur_tetromino+14
-	sta rotate_buf+7
-	lda cur_tetromino+15
-	sta rotate_buf+3
 
 	set16i word1, rotate_buf
 	set16i word2, cur_tetromino
@@ -1608,21 +1624,28 @@ _end
 	rts
 _len .reserve 1
 
-; Multiply accumulator by 40
+; Multiply 2 unsigned 16bit integers, result must fit into 16 bit 
 ; Input:
-;   A: to by multiplied
+;   word1, word2: numbers to multiply
 ; Output:
-;   X: LSB of A*40
-;   Y: MSB of A*40
-mul40:
-	asl
-	tax
-	lda _multab+1,x
-	tay
-	lda _multab,x
-	tax
+;   word1: result of multiplication
+; Invalidates:
+;   A
+;   X
+;   word3
+mul16:
+	set16i word3, 0
+	ldx #16
+	lsr16m word1
+_l	bcc _no_add
+	add16m word3, word2
+_no_add
+	lsl16m word2
+	lsr16m word1
+	dex
+	bne _l
+	set16m word1, word3
 	rts
-_multab .word 0,40,80,120,160,200,240,280,320,360,400,440,480,520,560,600,640,680,720,760,800,840,880,920,960
 
 ; Multiply accumulator by playfield width including sentinel
 ; Input:
@@ -1803,8 +1826,7 @@ level:	.reserve 1
 score:  .reserve 2
 lines:  .reserve 2
 stats:  .reserve 7*2    ; Same order as in "tetrominos" list
-
-score_increments	.reserve 4*2	; score increments for 1, 2, 3, and 4 removed lines
+lines_to_next_level	.reserve 1
 
 playfield:	.reserve (pf_w+2+2)*(pf_h+2+2) , scr('A')
 ; The following 2 fields are used for line blinking	
@@ -1850,6 +1872,8 @@ hiscore_record_size	.equ	hiscores_size/10
 ; ********************************************************************
 ; *** Static data
 ; ********************************************************************
+
+score_increments	.reserve 4*2	; score increments for 1, 2, 3, and 4 removed lines
 
 tetromino_preview: ; 2-byte tetromino previews in screen codes
 	.byte $62,$62 ; "I" tetromino

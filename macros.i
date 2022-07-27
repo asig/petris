@@ -36,6 +36,16 @@ add16i  .macro addr, val
         sta addr+1
         .endm
 
+add16m  .macro addr1, addr2
+        clc
+        lda addr1
+        adc addr2
+        sta addr1
+        lda addr1+1
+        adc addr2+1
+        sta addr1+1
+        .endm
+
 sub16i  .macro addr, val
         sec
         lda addr
@@ -44,6 +54,16 @@ sub16i  .macro addr, val
         lda addr+1
         sbc #>(val)
         sta addr+1
+        .endm
+
+lsl16m  .macro addr
+        asl addr
+        rol addr+1
+        .endm
+
+lsr16m  .macro addr
+        lsr addr+1
+        ror addr
         .endm
 
 pushx	.macro
