@@ -451,13 +451,22 @@ _prevline
 	beq _no_lines_removed
 	asl	; multiply by 2
 	tax	; X contains now the index+2 of the score to add
-	; FIXME: Multiply score by level!
+	; multiply score by level
+	lda score_increments-2,x
+	sta word1
+	lda score_increments-1,x
+	sta word1+1
+	lda level
+	sta word2
+	lda #0
+	sta word2+1
+	jsr mul16
 	clc
 	lda score
-	adc score_increments-2, x
+	adc word1
 	sta score
 	lda score+1
-	adc score_increments-1, x
+	adc word2
 	sta score+1
 	jsr print_scores
 
@@ -580,10 +589,10 @@ check_harddrop:
 	bne _cont
 	rts
 _cont
-	; FIXME add 4 points times level
+	; add 1 point times level
 	clc
 	lda score
-	adc #4
+	adc level
 	sta score
 	lda score+1
 	adc #0
@@ -1005,10 +1014,10 @@ init_scores_and_next_tetromino:
 	lda #1
 	sta level
 
-	set16i score_increments, 40	; 1 line
-	set16i score_increments+2, 100	; 2 lines
-	set16i score_increments+4, 300	; 3 lines
-	set16i score_increments+6, 1200	; 4 lines
+	set16i score_increments, 5	; 1 line
+	set16i score_increments+2, 15	; 2 lines
+	set16i score_increments+4, 30	; 3 lines
+	set16i score_increments+6, 60	; 4 lines
 
 	; Clear all the scores and stats
 	ldx #(9*2)-1    ; 9x16 bit    
