@@ -1896,53 +1896,55 @@ tetromino_preview: ; 2-byte tetromino previews in screen codes
 tetrominos:
 	.word  tetromino_i, tetromino_z, tetromino_s, tetromino_t, tetromino_j, tetromino_l, tetromino_o
 
+; Tetromino screen codes
+TCI	.equ $cc
+TCZ	.equ $cc
+TCS	.equ $cc
+TCT	.equ $cc
+TCJ	.equ $cc
+TCL	.equ $cc
+TCO	.equ $cc
+
 tetromino_i:
-	;.byte 4,1
 	.byte $00,$00,$00,$00
-	.byte $a0,$a0,$a0,$a0
+	.byte TCI,TCI,TCI,TCI
 	.byte $00,$00,$00,$00
 	.byte $00,$00,$00,$00
 
 tetromino_z:
-	;.byte 3,2
 	.byte $00,$00,$00,$00
-	.byte $66,$66,$00,$00
-	.byte $00,$66,$66,$00
+	.byte TCZ,TCZ,$00,$00
+	.byte $00,TCZ,TCZ,$00
 	.byte $00,$00,$00,$00
 
 tetromino_s:
-	;.byte 3,2
 	.byte $00,$00,$00,$00
-	.byte $00,$e6,$e6,$00
-	.byte $e6,$e6,$00,$00
+	.byte $00,TCS,TCS,$00
+	.byte TCS,TCS,$00,$00
 	.byte $00,$00,$00,$00
 
 tetromino_t:
-	;.byte 3,2
 	.byte $00,$00,$00,$00
-	.byte $00,$66,$00,$00
-	.byte $66,$66,$66,$00
+	.byte $00,TCT,$00,$00
+	.byte TCT,TCT,TCT,$00
 	.byte $00,$00,$00,$00
 
 tetromino_j:
-	;.byte 3,2
 	.byte $00,$00,$00,$00
-	.byte $e6,$00,$00,$00
-	.byte $e6,$e6,$e6,$00
+	.byte TCJ,$00,$00,$00
+	.byte TCJ,TCJ,TCJ,$00
 	.byte $00,$00,$00,$00
 
 tetromino_l:
-	;.byte 3,2
 	.byte $00,$00,$00,$00
-	.byte $00,$00,$66,$00
-	.byte $66,$66,$66,$00
+	.byte $00,$00,TCL,$00
+	.byte TCL,TCL,TCL,$00
 	.byte $00,$00,$00,$00
 
 tetromino_o:
-	;.byte 2,2
 	.byte $00,$00,$00,$00
-	.byte $00,$e6,$e6,$00
-	.byte $00,$e6,$e6,$00
+	.byte $00,TCO,TCO,$00
+	.byte $00,TCO,TCO,$00
 	.byte $00,$00,$00,$00
 
 
