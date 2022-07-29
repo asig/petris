@@ -16,7 +16,7 @@
 ; along with cbmasm.  If not, see <http://www.gnu.org/licenses/>.
 ;
 
-DEBUG	.equ 1
+;DEBUG	.equ 1
 
 	.platform "pet"
 	.cpu "6502"
@@ -589,9 +589,9 @@ next_level:
 	inc level
 	lda cur_fall_delay
 	cmp #10	; minimal fall delay
-	bcs _no_delay_change
+	bcc _no_delay_change
 	sec
-	sbc #3
+	sbc #7
 	sta cur_fall_delay
 _no_delay_change
 	jsr print_level
