@@ -51,6 +51,9 @@ keyboard_decode_table	.equ	$e75c
 curkey				.equ $203	; Currently pressed key
 keyboard_buf_size	.equ $20d	; No. of characters in keyboard buffer
 
+; ROM routines
+print	.equ	$ca27	;  print $0-terminated string (string's low byte in A, high byte in Y)
+
 ; Zeropage addresses used to pass params, or as temporary variables
 word1   .equ    $54
 word2   .equ    $56
@@ -109,14 +112,64 @@ _quit
 	; Make sure the keyboard buffer is empty
 	lda #0
 	sta keyboard_buf_size
-	rts
+	
+	lda #<byebye
+	ldy #>byebye
+	jmp print
+
+byebye	.byte 147, "thanks for playing petris!",13,0
 
 ; ********************************************************************
 ; *** TITLE SCREEN
 ; ********************************************************************
-title_mode		.equ byte1	; 0 == controls, !=0 == hiscores
+title_mode		.reserve 1	; 0 == controls, !=0 == hiscores
 title_cycle_cnt	.equ byte2
 title
+	jsr prepare_hiscores
+
+	set16i word1, title_logo
+	set16i word2, vram
+	set16i word3, 8*scr_w
+	jsr decrunch
+
+	lda #0
+	sta title_mode
+	sta title_cycle_cnt
+	set16i scroll_pos, scroller_prefix
+	set16i word1, title_controls
+	set16i word2, vram+8*scr_w
+	set16i word3, 16*scr_w
+	jsr decrunch
+
+	jsr wait_no_key
+
+_l	jsr wait_vbl
+	inc title_cycle_cnt
+
+	lda title_cycle_cnt
+	and #$f
+	bne _no_scroll
+	jsr title_do_scroll
+_no_scroll
+	lda title_cycle_cnt
+	bne _no_flip_mode
+	jsr title_flip_mode
+_no_flip_mode
+	lda curkey
+	cmp #$ff
+	beq _l
+	cmp #key_quit
+	beq _quit_to_basic
+	jmp title_begin_game
+_quit_to_basic
+	; run/stop pressed, return to basic after asking	
+	jsr handle_quit
+	jsr prepare_hiscores ; quit handler overwrites screen buffer, so we need to re-prepare the hiscores screen
+	lda quit_flag
+	beq _l
+	rts
+
+prepare_hiscores:
 	; prepare hiscores screen in screen_buf
 	set16i word1, title_hiscores
 	set16i word2, screen_buf
@@ -177,45 +230,6 @@ _l2	lda (word3),y
 	beq _hs_done
 	jmp _hs_loop
 _hs_done
-
-	set16i word1, title_logo
-	set16i word2, vram
-	set16i word3, 8*scr_w
-	jsr decrunch
-
-	lda #0
-	sta title_mode
-	sta title_cycle_cnt
-	set16i scroll_pos, scroller_prefix
-	set16i word1, title_controls
-	set16i word2, vram+8*scr_w
-	set16i word3, 16*scr_w
-	jsr decrunch
-
-	jsr wait_no_key
-
-_l	jsr wait_vbl
-	inc title_cycle_cnt
-
-	lda title_cycle_cnt
-	and #$f
-	bne _no_scroll
-	jsr title_do_scroll
-_no_scroll
-	lda title_cycle_cnt
-	bne _no_flip_mode
-	jsr title_flip_mode
-_no_flip_mode
-	lda curkey
-	cmp #$ff
-	beq _l
-	cmp #key_quit
-	beq _quit_to_basic
-	jmp title_begin_game
-_quit_to_basic
-	; run/stop pressed, return to basic
-	lda #1
-	sta quit_flag
 	rts
 
 title_flip_mode:

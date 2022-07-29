@@ -4,7 +4,10 @@
 - [X] Hiscores handling
 - [X] Welcome screen
 - [X] increase scores
-- [ ] Nicer tetromino patterns
-- [ ] Add levels
-- [ ] Increase fall speed after a certain # of lines.
-
+- [X] Nicer tetromino patterns
+- [X] Add levels
+- [X] Increase fall speed after a certain # of lines.
+- [X] Use level as score multiplier
+- [X] Ask before quitting on title screen
+- [ ] Update initial hiscore data
+- [ ] Increase fall speed quicker
