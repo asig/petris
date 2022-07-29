@@ -1,16 +1,26 @@
+# README
+
+Welcome to 
+
+```
 ▐████▖████▌██████████▌
 ▐▌  ▐▌█      █        
 ▐████▘████▌  █ ▛▚▝▛▐▀ 
 ▐▌    █      █ ▙▞ ▌▐▄ 
 ▐▌    ████▌  █ ▌▐▗▙ ▐ 
 ▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▟ 
+```
 
+PETris is a small Tetris implementation for the Commodore PET 2001 with
+BASIC 1. It will not run on other Commodores.
 
-## Tetromoinos
+## How to build
 
-- always 4x4
-- center is always at (2,1)
+To build PETris, you need the following tools:
+   - `make`
+   - [cbmasm](https://github.com/asig/cbmasm)
+   - a recent version of [go](https://go.dev) 
+   
+Then, just run `make` to build the prg file, or `make run` to run it in VICE.
 
-## Playfield
-
-- "sentinel" cols and rows so that a tetromino can never be outside the playfield
+## License
