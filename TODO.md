@@ -11,3 +11,6 @@
 - [X] Ask before quitting on title screen
 - [ ] Update initial hiscore data
 - [X] Increase fall speed quicker
+- [ ] Update copyright headers
+- [ ] Update/finish README
+- [ ] Add LICENSE file
