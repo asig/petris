@@ -10,4 +10,4 @@
 - [X] Use level as score multiplier
 - [X] Ask before quitting on title screen
 - [ ] Update initial hiscore data
-- [ ] Increase fall speed quicker
+- [X] Increase fall speed quicker
