@@ -1,8 +1,8 @@
-rle
 screen_to_unicode
+screen_to_unicode.exe
 petris.prg
+petris.tap
 petris.sym
-logo.txt
 screens.asm
 pe_screen_extractor
-
+pe_screen_extractor.exe
