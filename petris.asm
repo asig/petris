@@ -1128,7 +1128,7 @@ restore_screen
 	set16i word2, vram
 	jmp copy_screen
 
-copy_screen:
+copy_screen
 	ldx #3
 _l	ldy #0
 	jsr copy_mem
@@ -1140,11 +1140,14 @@ _l	ldy #0
 	jsr copy_mem
 	rts
 
-; Draws a box
+; ---------------------
+; draw_box: Draws a box
+; ---------------------
 ; Input:
 ;   word1: Top left corner
 ;   Y: width
 ;   X: height
+; ---------------------
 draw_box
 	sty _w
 	stx _h
@@ -1247,6 +1250,16 @@ _l3 sta (word2),y
 
 	rts
 
+; ---------------------
+; clean_playfield: Clears the playfield
+; ---------------------
+; Input: -
+; Output: -
+; Invalidates:
+;    word1
+;    word2
+;    A,X,Y
+; ---------------------
 clear_playfield:
 	; Source address to word1
 	set16i word1, playfield+2  ; skip 2 cols (sentinels)
@@ -1275,12 +1288,15 @@ test_tetromino_fits_pixel  .macro
 _l  iny
 	.endm
 
-; Tests if the current tetromino (cur_tetromino) fits into the playfield
-; at (cur_tetromino_x, cur_tetromino_y)
+; ---------------------
+; test_tetromino_fits: Tests if the current tetromino (cur_tetromino) fits
+; into the playfield at (cur_tetromino_x, cur_tetromino_y)
+; ---------------------
 ; Input: (coords in cur_tetromino_x, cur_tetromino_y)
 ; Output:
 ;   C-Flag set: Tetromino does not fit
 ;   C-Flag cleared: Tetromino fits
+; ---------------------
 test_tetromino_fits:
 	; compute pf address
 	set16i word1, playfield+2*(pf_w+4)+2	; 2-byte sentinels around the whole playfield
@@ -1334,10 +1350,18 @@ _l  iny
 tmp .reserve 2
 	.endif
 
-; Sets the current tetromino (cur_tetromino) in the playfield
-; at (cur_tetromino_x, cur_tetromino_y). No checks are performed
-; whether it fits.
+; ---------------------
+; set_tetromino_in_pf: Sets the current tetromino (cur_tetromino)
+; in the playfield at (cur_tetromino_x, cur_tetromino_y).
+; No checks are performed whether it fits.
+; ---------------------
 ; Input: -
+; Ouput: -
+; Invalidates:
+;    word1
+;    word2
+;    A, X
+; ---------------------
 set_tetromino_in_pf:
 	; compute pf address
 	set16i word1, playfield+2*(pf_w+4)+2	; 2-byte sentinels around the whole playfield
@@ -1386,9 +1410,18 @@ remove_tetromino_from_pf_elem  .macro
 _l  iny
 	.endm
 
-; Removes the current tetromino (cur_tetromino) from the playfield
-; at (cur_tetromino_x, cur_tetromino_y). No checks are performed
-; whether it fits.
+; ---------------------
+; set_tetromino_in_pf: Removes the current tetromino (cur_tetromino) from
+; the playfield at (cur_tetromino_x, cur_tetromino_y).
+; No checks are performed whether it fits.
+; ---------------------
+; Input: -
+; Ouput: -
+; Invalidates:
+;    word1
+;    word2
+;    A, X
+; ---------------------
 ; Input: -
 remove_tetromino_from_pf:
 	; compute pf address
@@ -1448,18 +1481,22 @@ new_tetromino:
 _nooverflow
 
 	; Copy next tetromino to current
-	; ...copy source address to word1
-	lda tetrominos,x
-	sta word1
-	lda tetrominos+1,x
-	sta word1+1
+	; Compute base address of next tetromino. A is already "next_tetromino * 2"
+	; so we need to shift 3 times.
+	asl
+	asl
+	asl
 
-	; ...copy dest address to word2
-	set16i word2, cur_tetromino
-
-	; ...finally copy 16 bytes
-	ldy #4*4
-	jsr copy_mem
+	; Now, copy 16 bytes from tetrominos + offset
+	tax
+	set16i word1, cur_tetromino
+	ldy #0
+_1	lda tetrominos,x
+	sta (word1),Y
+	inx
+	iny
+	cpy #16
+	bne _1
 
 	; set position
 	lda #pf_w/2
@@ -1796,8 +1833,6 @@ _l  lda word1+0 ; subtract current tens
 	bne _digit	; Not zero, print it
 	ldx _pad
 	bne _digit	; No padding, print digit
-;	tya
-;	cmp #0              ; is it the last digit?
 	cpy #0
 	bne _notlastdigit   ; no, continue padding with ' '
 	lda #scr('0')       ; otherwise, print '0'
@@ -1906,9 +1941,6 @@ tetromino_preview: ; 2-byte tetromino previews in screen codes
 	.byte $6C,$FE ; "L" tetromino
 	.byte $E1,$61 ; "O" tetromino
 
-tetrominos:
-	.word  tetromino_i, tetromino_z, tetromino_s, tetromino_t, tetromino_j, tetromino_l, tetromino_o
-
 ; Tetromino screen codes
 TCI	.equ $cc
 TCZ	.equ $cc
@@ -1918,43 +1950,47 @@ TCJ	.equ $cc
 TCL	.equ $cc
 TCO	.equ $cc
 
-tetromino_i:
+tetrominos:
+	; 16 bytes per tetromino
+	; order must be I, Z, S, T, J, L, O
+
+	; Tetromino I
 	.byte $00,$00,$00,$00
 	.byte TCI,TCI,TCI,TCI
 	.byte $00,$00,$00,$00
 	.byte $00,$00,$00,$00
 
-tetromino_z:
+	; Tetromino Z
 	.byte $00,$00,$00,$00
 	.byte TCZ,TCZ,$00,$00
 	.byte $00,TCZ,TCZ,$00
 	.byte $00,$00,$00,$00
 
-tetromino_s:
+	; Tetromino S
 	.byte $00,$00,$00,$00
 	.byte $00,TCS,TCS,$00
 	.byte TCS,TCS,$00,$00
 	.byte $00,$00,$00,$00
 
-tetromino_t:
+	; Tetromino T
 	.byte $00,$00,$00,$00
 	.byte $00,TCT,$00,$00
 	.byte TCT,TCT,TCT,$00
 	.byte $00,$00,$00,$00
 
-tetromino_j:
+	; Tetromino J
 	.byte $00,$00,$00,$00
 	.byte TCJ,$00,$00,$00
 	.byte TCJ,TCJ,TCJ,$00
 	.byte $00,$00,$00,$00
 
-tetromino_l:
+	; Tetromino L
 	.byte $00,$00,$00,$00
 	.byte $00,$00,TCL,$00
 	.byte TCL,TCL,TCL,$00
 	.byte $00,$00,$00,$00
 
-tetromino_o:
+	; Tetromino O
 	.byte $00,$00,$00,$00
 	.byte $00,TCO,TCO,$00
 	.byte $00,TCO,TCO,$00
