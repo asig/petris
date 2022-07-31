@@ -77,9 +77,6 @@ key_quit	.equ 4	; Run/stop key
 scancode_delete	.equ 65
 scancode_return	.equ 27
 
-; Default initial fall delay
-inital_fall_delay	.equ	40
-
 ; Maximal name length in hiscores
 max_hs_name_len	.equ 11
 
@@ -312,7 +309,7 @@ main_game:
 	jsr print_lines
 
 	jsr new_tetromino
-	lda #inital_fall_delay
+	lda fall_delays
 	sta cur_fall_delay
 	sta cur_fall_cnt
 	lda #$ff
@@ -586,13 +583,14 @@ next_level:
 	cmp #max_level
 	beq _no_level_change
 	inc level
-	lda cur_fall_delay
-	cmp #10	; minimal fall delay
-	bcc _no_delay_change
-	sec
-	sbc #7
+	; Compute new fall delay
+	tax
+	cpx #nof_fall_delays
+	bcc _cont
+	ldx #nof_fall_delays-1
+_cont
+	lda fall_delays, x	
 	sta cur_fall_delay
-_no_delay_change
 	jsr print_level
 _no_level_change
 	rts	
@@ -1889,6 +1887,9 @@ lines:  .reserve 2
 stats:  .reserve 7*2    ; Same order as in "tetrominos" list
 lines_to_next_level	.reserve 1
 
+score_increments	.reserve 4*2	; score increments for 1, 2, 3, and 4 removed lines
+
+
 playfield:	.reserve (pf_w+2+2)*(pf_h+2+2) , scr('A')
 ; The following 2 fields are used for line blinking	
 pf_line_buf		.reserve pf_w+4
@@ -1934,7 +1935,12 @@ hiscore_record_size	.equ	hiscores_size/10
 ; *** Static data
 ; ********************************************************************
 
-score_increments	.reserve 4*2	; score increments for 1, 2, 3, and 4 removed lines
+; fall delays per level
+fall_delays;
+	; This is loosely based on the "Gravity" section of https://harddrop.com/wiki/Tetris_Worlds,
+	; but uses the formula: frames = ((0.8-((Level-1)*0.007))^((Level-1)/2)) * 60
+	.byte   60, 53, 47, 41, 36, 31, 26, 22, 18, 15
+nof_fall_delays .equ * - fall_delays
 
 tetromino_preview: ; 2-byte tetromino previews in screen codes
 	.byte $62,$62 ; "I" tetromino
