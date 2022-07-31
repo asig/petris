@@ -1,6 +1,7 @@
 MAIN_SOURCE = petris.asm
 SOURCES = ${MAIN_SOURCE} random.asm screens.asm
 PROGRAM = petris.prg
+TAP = petris.tap
 SYMTAB = petris.sym
 
 .PHONY: all clean
@@ -8,7 +9,7 @@ SYMTAB = petris.sym
 all: ${PROGRAM}
 
 clean:
-	$(RM) ${PROGRAM} screens.asm pe_screen_extractor screen_to_unicode
+	$(RM) ${PROGRAM} ${TAP} screens.asm pe_screen_extractor screen_to_unicode
 
 run: ${PROGRAM}
 	xpet >/dev/null -model 2001 ${PROGRAM}
@@ -21,3 +22,6 @@ pe_screen_extractor: tools/pe_screen_extractor.go
 
 ${PROGRAM}: ${SOURCES}
 	cbmasm -I include:. -labels ${SYMTAB} ${MAIN_SOURCE} ${PROGRAM}
+
+${TAP}: ${PROGRAM}
+	prg2tap -r -n "PETRIS" ${PROGRAM} ${TAP}
