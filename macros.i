@@ -1,3 +1,20 @@
+; Copyright (c) 2022 Andreas Signer <asigner@gmail.com>
+;
+; This file is part of petris.
+;
+; petris is free software: you can redistribute it and/or
+; modify it under the terms of the GNU General Public License as
+; published by the Free Software Foundation, either version 3 of the
+; License, or (at your option) any later version.
+;
+; petris is distributed in the hope that it will be useful,
+; but WITHOUT ANY WARRANTY; without even the implied warranty of
+; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+; GNU General Public License for more details.
+;
+; You should have received a copy of the GNU General Public License
+; along with petris.  If not, see <http://www.gnu.org/licenses/>.
+
 set16i  .macro addr, val
         lda #<(val)
         sta addr
@@ -20,11 +37,11 @@ _l
         .endm
 
 dec16   .macro addr
-	lda addr
-	bne _l
-	dec addr+1
-_l	dec addr
-	.endm
+		lda addr
+		bne _l
+		dec addr+1
+_l		dec addr
+		.endm
 
 add16i  .macro addr, val
         clc
@@ -67,25 +84,25 @@ lsr16m  .macro addr
         .endm
 
 pushx	.macro
-	txa
-	pha
-	.endm
+		txa
+		pha
+		.endm
 
 popx	.macro
-	pla
-	tax
-	.endm
+		pla
+		tax
+		.endm
 	
 push16m	.macro addr
-	lda addr
-	pha
-	lda addr+1
-	pha
-	.endm
+		lda addr
+		pha
+		lda addr+1
+		pha
+		.endm
 
 pop16m	.macro addr
-	pla
-	sta addr+1
-	pla
-	sta addr
-	.endm
+		pla
+		sta addr+1
+		pla
+		sta addr
+		.endm

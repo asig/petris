@@ -12,6 +12,6 @@
 - [ ] Update initial hiscore data
 - [X] Increase fall speed quicker
 - [ ] Slow fall speed increase down, becomes unplayable after level 3
-- [ ] Update copyright headers
+- [X] Update copyright headers
 - [ ] Update/finish README
-- [ ] Add LICENSE file
+- [X] Add LICENSE file
