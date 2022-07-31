@@ -8,7 +8,7 @@ SYMTAB = petris.sym
 all: ${PROGRAM}
 
 clean:
-	$(RM) ${PROGRAM} screens.asm pe_screen_extractor
+	$(RM) ${PROGRAM} screens.asm pe_screen_extractor screen_to_unicode
 
 run: ${PROGRAM}
 	xpet >/dev/null -model 2001 ${PROGRAM}
@@ -16,8 +16,8 @@ run: ${PROGRAM}
 screens.asm: pe_screen_extractor screens.pe
 	./pe_screen_extractor -in=screens.pe -out=screens.asm -screens=main_screen,title_logo,title_controls,title_hiscores -dump_pe=SCREENS_DUMP
 
-pe_screen_extractor: pe_screen_extractor.go
-	go build pe_screen_extractor.go
+pe_screen_extractor: tools/pe_screen_extractor.go
+	go build tools/pe_screen_extractor.go
 
 ${PROGRAM}: ${SOURCES}
-	cbmasm -listing  -labels ${SYMTAB} ${MAIN_SOURCE} ${PROGRAM}
+	cbmasm -I include:. -labels ${SYMTAB} ${MAIN_SOURCE} ${PROGRAM}
