@@ -1864,26 +1864,26 @@ next_tetromino:     .reserve 1
 quit_flag			.reserve 1
 
 hiscores:
-	.word 1000, 1
-	.byte 10, scr("12345678901")
+	.word 1000, 10
+	.byte 10,scr("fork me on ")
 	.word 900, 9
-	.byte 9, scr("12345678901")
+	.byte 9, scr("github!    ")
 	.word 800, 8
-	.byte 8, scr("12345678901")
+	.byte 8, scr("https://   ")
 	.word 700, 7
-	.byte 7, scr("12345678901")
+	.byte 7, scr("github.com/")
 	.word 600, 6
-	.byte 6, scr("12345678901")
+	.byte 6, scr("asig/petris")
 	.word 500, 5
-	.byte 5, scr("12345678901")
+	.byte 5, scr("           ")
 	.word 400, 4
-	.byte 4, scr("12345678901")
+	.byte 4, 83,83,83,83,83,83,83,83,83,83,83
 	.word 300, 3
-	.byte 3, scr("12345678901")
+	.byte 3, scr(" commodore ")
 	.word 200, 2
-	.byte 2, scr("12345678901")
+	.byte 2, scr("forever :-)")
 	.word 100, 1
-	.byte 1, scr("12345678901")
+	.byte 1, 83,83,83,83,83,83,83,83,83,83,83
 hiscores_size	.equ * - hiscores
 	.if hiscores_size != 10*16
 	.fail "Hiscores size is != 160"

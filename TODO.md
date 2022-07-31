@@ -9,7 +9,7 @@
 - [X] Increase fall speed after a certain # of lines.
 - [X] Use level as score multiplier
 - [X] Ask before quitting on title screen
-- [ ] Update initial hiscore data
+- [X] Update initial hiscore data
 - [X] Increase fall speed quicker
 - [ ] Slow fall speed increase down, becomes unplayable after level 3
 - [X] Update copyright headers
