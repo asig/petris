@@ -1627,7 +1627,9 @@ decrunch
 _next
 	ldy #0
 	lda (word1),y
-	beq _run
+	cmp #%10000000
+	bcs _run
+
 	; Not a run, just store byte in 
 	sta (word2),y
 	inc16 word1
@@ -1637,19 +1639,21 @@ _next
 	jmp _end
 
 _run
-	iny
-	lda (word1),y
-	clc
-	adc #1
-	sta _len
+	; extract number of repetitions and store it in _len
+	and #%01111111
+	tax
+	inx
+	stx _len ; _len now contains the number of repetitions
+
+	; load byte to repeat
 	iny
 	lda (word1),y
 
+	; store byte repeatedly
 	ldy _len
-_l  sta (word2),y
-	dey
+_l	dey
+  	sta (word2),y	; STA does not touch the flags,
 	bne _l
-	sta (word2),y ; also store the 0th byte
 
 	; Increment dest pointer by adding _len
 	clc
@@ -1670,7 +1674,7 @@ _l  sta (word2),y
 	sta word3+1
 
 	; increment source pointer
-	add16i word1, 3
+	add16i word1, 2
 
 _end 
 	; check whether remaining byte count is 0

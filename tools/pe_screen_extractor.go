@@ -89,20 +89,17 @@ func (scr *packedScreen) emit(c int32) {
 
 func (scr *packedScreen) emitRun(c, l int32) {
 	if l > 1 {
-		for l > 256 {
-			scr.emit(rleMarker)
-			scr.emit(255)
+		for l > 128 {
+			scr.emit(255) // 128 byte run
 			scr.emit(c)
-			l -= 256
+			l -= 128
 		}
-		scr.emit(rleMarker)
-		scr.emit(l - 1)
+		scr.emit(128 + l - 1)
 		scr.emit(c)
 		return
 	}
-	if c == rleMarker {
-		scr.emit(rleMarker)
-		scr.emit(0)
+	if c >= 128 {
+		scr.emit(128)
 		scr.emit(c)
 		return
 	}
