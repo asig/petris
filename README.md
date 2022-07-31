@@ -26,7 +26,7 @@ Luigi di Fraia's [prg2tap] tools.
    
 Then, just run make:
    - `make` to build the prg file,
-   - 'make petris.tap` to create a `TAP` file that can be used with [Tapuino](https://github.com/sweetlilmre/tapuino) on a real PET,
+   - `make petris.tap` to create a `TAP` file that can be used with [Tapuino](https://github.com/sweetlilmre/tapuino) on a real PET,
    - or `make run` to run it in VICE.
 
 ## License

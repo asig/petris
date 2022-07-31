@@ -6,7 +6,7 @@ SYMTAB = petris.sym
 
 .PHONY: all clean
 
-all: ${PROGRAM}
+all: ${PROGRAM} ${TAP}
 
 clean:
 	$(RM) ${PROGRAM} ${TAP} screens.asm pe_screen_extractor screen_to_unicode
