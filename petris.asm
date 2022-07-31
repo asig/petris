@@ -621,9 +621,10 @@ game_over_box_x	.equ	(40-game_over_line_len-4)/2
 game_over_box_y	.equ	8
 game_over_address	.equ vram + (game_over_box_y+1)*scr_w+game_over_box_x+2
 
-game_over_hs_line3	.byte scr("well done! enter your   ")
-game_over_hs_line4	.byte scr("name: ...........       ")
-game_over_hs_textpos	.equ game_over_address + 3*scr_w+6
+game_over_hs_line3	.byte scr("well done! you got into ")
+game_over_hs_line4	.byte scr("the hall of fame! enter ")
+game_over_hs_line5	.byte scr("your name: ...........  ")
+game_over_hs_textpos	.equ game_over_address + 4*scr_w+11
 
 game_over:
 	; check whether the user made it into the hiscores table
@@ -740,6 +741,11 @@ _hs_insert_done
 
 	set16i word1, game_over_hs_line4
 	set16i word2, game_over_address+3*scr_w
+	ldy #game_over_line_len
+	jsr copy_mem
+
+	set16i word1, game_over_hs_line5
+	set16i word2, game_over_address+4*scr_w
 	ldy #game_over_line_len
 	jsr copy_mem
 
