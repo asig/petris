@@ -924,7 +924,7 @@ handle_rotate:
 	ldy #4*4
 	jsr copy_mem
 
-	jsr rotate_cur_left
+	jsr rotate_cur_right
 	jsr test_tetromino_fits
 	bcs _nofit
 	inc pos_changed
@@ -1583,7 +1583,7 @@ _done
 	jmp print_next_tetromino	
 	
 
-rotate_cur_left:
+rotate_cur_right:
 	lda cur_tetromino+0
 	sta rotate_buf+3
 	lda cur_tetromino+1
