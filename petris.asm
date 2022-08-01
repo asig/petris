@@ -71,10 +71,10 @@ cur_fall_cnt		.equ cur_fall_delay + 1		; size 1: fall count down; when 0, the te
 cur_tetromino_x		.equ cur_fall_cnt + 1		; size 1
 cur_tetromino_y		.equ cur_tetromino_x + 1	; size 1
 cur_tetromino		.equ cur_tetromino_y + 1	; size 4*4
-last_tetromino_x	.equ cur_tetromino + 16		; size 1
-last_tetromino_y	.equ last_tetromino_x + 1	; size 1
-last_tetromino		.equ last_tetromino_y + 1	; size 4*4
-next_tetromino:		.equ last_tetromino + 16	; size 1
+prev_tetromino_x	.equ cur_tetromino + 16		; size 1
+prev_tetromino_y	.equ prev_tetromino_x + 1	; size 1
+prev_tetromino		.equ prev_tetromino_y + 1	; size 4*4
+next_tetromino:		.equ prev_tetromino + 16	; size 1
 quit_flag			.equ next_tetromino + 1		; size 1
 last_key			.equ quit_flag + 1			; size 1
 is_harddrop			.equ last_key + 1			; size 1
@@ -347,12 +347,12 @@ _loop
 
 	; save last position and tetromino
 	lda cur_tetromino_x
-	sta last_tetromino_x
+	sta prev_tetromino_x
 	lda cur_tetromino_y
-	sta last_tetromino_y
+	sta prev_tetromino_y
 	ldx #15
 _cl	lda cur_tetromino,x
-	sta last_tetromino,x
+	sta prev_tetromino,x
 	dex
 	bpl _cl
 
@@ -414,7 +414,7 @@ _game_not_over
 	jsr test_tetromino_fits
 	bcc _fall_cont	; Fits, move on.
 
-	; Stone does not fit one row below: add it to the playfield, start a new stone
+	; Tetromino does not fit one row below: add it to the playfield, start a new tetromino
 	dec pos_changed	; Undo the "does fit assumption". Will still be > 0 if changed in the key handlers
 	dec cur_tetromino_y
 	jsr set_tetromino_in_pf
@@ -429,7 +429,7 @@ _fall_cont
 	jsr wait_vbl
 	lda pos_changed
 	beq _pos_not_changed
-	jsr erase_last_tetromino
+	jsr erase_prev_tetromino
 	jsr draw_cur_tetromino
 _pos_not_changed
 
@@ -866,13 +866,13 @@ handle_fall:
 	sta is_harddrop
 	
 _l	lda cur_tetromino_y
-	sta last_tetromino_y	
+	sta prev_tetromino_y	
 	inc cur_tetromino_y
 	jsr test_tetromino_fits
 	bcs _nofit
 
 	jsr wait_vbl
-	jsr erase_last_tetromino
+	jsr erase_prev_tetromino
 	jsr draw_cur_tetromino
 
 	; Wait a little more
@@ -1423,6 +1423,18 @@ draw_cur_tetromino_elem  .macro
 _l  iny
 	.endm
 
+; ---------------------
+; draw_cur_tetromino: Draws the current tetromino (cur_tetromino) from
+; the screen at (cur_tetromino_x, cur_tetromino_y).
+; ---------------------
+; Input: -
+; Ouput: -
+; Invalidates:
+;    word1
+;    word2
+;    A, X
+; ---------------------
+
 draw_cur_tetromino:
 	; compute vram address
 	set16i word1, vram_playfield
@@ -1463,7 +1475,7 @@ _l	ldy #0
 	rts
 
 
-erase_last_tetromino_elem  .macro
+erase_prev_tetromino_elem  .macro
 	lda (word2),y
 	beq _l
 	lda #scr(' ')
@@ -1472,9 +1484,8 @@ _l  iny
 	.endm
 
 ; ---------------------
-; remove_tetromino_from_pf: Removes the current tetromino (cur_tetromino) from
-; the playfield at (cur_tetromino_x, cur_tetromino_y).
-; No checks are performed whether it fits.
+; erase_prev_tetromino: Removes the last tetromino (prev_tetromino) from
+; the screen at (prev_tetromino_x, prev_tetromino_y).
 ; ---------------------
 ; Input: -
 ; Ouput: -
@@ -1483,12 +1494,11 @@ _l  iny
 ;    word2
 ;    A, X
 ; ---------------------
-; Input: -
-erase_last_tetromino:
+erase_prev_tetromino:
 	; compute vram address
 	set16i word1, vram_playfield
 	; add col offset
-	lda last_tetromino_x
+	lda prev_tetromino_x
 	clc
 	adc word1
 	sta word1
@@ -1497,7 +1507,7 @@ erase_last_tetromino:
 	sta word1+1
 
 	; add row offset
-	lda last_tetromino_y
+	lda prev_tetromino_y
 	jsr mulScrW
 	txa
 	clc
@@ -1508,24 +1518,20 @@ erase_last_tetromino:
 	sta word1+1
 
 	sub16i word1, 1*scr_w+2	; compensate for origin being at (2,1)
-	set16i word2, last_tetromino
+	set16i word2, prev_tetromino
 
 	ldx #4  ; 4 rows
 _l	ldy #0
-	erase_last_tetromino_elem
-	erase_last_tetromino_elem
-	erase_last_tetromino_elem
-	erase_last_tetromino_elem
+	erase_prev_tetromino_elem
+	erase_prev_tetromino_elem
+	erase_prev_tetromino_elem
+	erase_prev_tetromino_elem
 	add16i word1, scr_w
 	add16i word2, 4
 	dex
 	bne _l
 
 	rts
-
-; ********************************************************************
-; *** Tetromino routines
-; ********************************************************************
 
 ; Copy "next_tetromino" to cur_tetromino, and select new next tetromino
 ; Update stats and next_tetromino
