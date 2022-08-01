@@ -316,8 +316,6 @@ main_game:
 	sta last_key
 
 _loop
-	jsr wait_vbl
-
 	lda curkey
 	cmp last_key
 	beq _cont	; Same key still pressed
@@ -392,10 +390,12 @@ _game_not_over
 	jsr check_harddrop
 	jsr check_lines
 	jsr new_tetromino
+	jsr wait_vbl
 	jmp _loop
 
 _fall_cont
 	jsr set_tetromino_in_pf
+	jsr wait_vbl
 	jsr draw_playfield
 	jsr remove_tetromino_from_pf
 
@@ -529,6 +529,7 @@ _l1
 	pushx
 	push16m word1
 	push16m word2
+	jsr wait_vbl
 	jsr draw_playfield
 	jsr print_lines
 	pop16m word2
