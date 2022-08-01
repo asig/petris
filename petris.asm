@@ -60,6 +60,30 @@ word3	.equ	$58
 byte1   .equ    $5a
 byte2   .equ    $5b
 
+cassette_buffer_1		.equ $27a
+cassette_buffer_2		.equ $33a
+cassette_buffer_size	.equ 192
+
+; Misc buffers and vars used in the code, put into cassette buffer #1 
+rotate_buf			.equ cassette_buffer_1		; size 16
+cur_fall_delay		.equ rotate_buf + 16		; size 1: Current delay per line
+cur_fall_cnt		.equ cur_fall_delay + 1		; size 1: fall count down; when 0, the tetromino falls down 1 line
+cur_tetromino_x		.equ cur_fall_cnt + 1		; size 1
+cur_tetromino_y		.equ cur_tetromino_x + 1	; size 1
+cur_tetromino		.equ cur_tetromino_y + 1	; size 4*4
+last_tetromino_x	.equ cur_tetromino + 16		; size 1
+last_tetromino_y	.equ last_tetromino_x + 1	; size 1
+last_tetromino		.equ last_tetromino_y + 1	; size 4*4
+next_tetromino:		.equ last_tetromino + 16	; size 1
+quit_flag			.equ next_tetromino + 1		; size 1
+last_key			.equ quit_flag + 1			; size 1
+is_harddrop			.equ last_key + 1			; size 1
+pos_changed			.equ is_harddrop + 1		; size 1
+__LAST__			.equ pos_changed + 1
+					.if __LAST__ >  cassette_buffer_1 + cassette_buffer_size
+					.fail "Variable block too big"
+					.endif
+
 ; Playfield consts
 pf_w    .equ    10
 pf_h    .equ    22
@@ -287,8 +311,6 @@ scroller_overlap .reserve 40
 ; ********************************************************************
 ; *** MAIN GAME LOOP
 ; ********************************************************************
-last_key	.reserve 1
-is_harddrop	.byte 1
 main_game:
 	lda #0
 	sta quit_flag
@@ -315,7 +337,25 @@ main_game:
 	lda #$ff
 	sta last_key
 
+	jsr wait_vbl
+	jsr draw_cur_tetromino
+
 _loop
+	; reset the "pos changed" flag
+	lda #0
+	sta pos_changed
+
+	; save last position and tetromino
+	lda cur_tetromino_x
+	sta last_tetromino_x
+	lda cur_tetromino_y
+	sta last_tetromino_y
+	ldx #15
+_cl	lda cur_tetromino,x
+	sta last_tetromino,x
+	dex
+	bpl _cl
+
 	lda curkey
 	cmp last_key
 	beq _cont	; Same key still pressed
@@ -328,14 +368,14 @@ _loop
 _kl	lda _handlers,x
 	beq _cont
 	cmp last_key
-	bne _next
+	bne _next_handler
 	lda _handlers+1,x
 	sta _jsr+1
 	lda _handlers+2,x
 	sta _jsr+2
 _jsr	jsr $ffff
 	jmp _cont
-_next
+_next_handler
 	inx
 	inx
 	inx
@@ -353,26 +393,15 @@ _handlers
 
 _cont
 	lda quit_flag
-	beq _c2
+	beq _dont_quit
 	rts
-
-_c2
-	.ifdef DEBUG
-	; print out key
-	lda last_key
-	sta word1
-	lda #0
-	sta word1+1
-	set16i word2, vram
-	ldy #4  ; 3 digits
-	jsr print_uint16_lp1
-	.endif
+_dont_quit
 
 	jsr test_tetromino_fits
 	bcc _game_not_over
 	jmp game_over
-_game_not_over
 
+_game_not_over
 	dec cur_fall_cnt
 	bne _fall_cont
 	; Reset fall counter
@@ -381,51 +410,28 @@ _game_not_over
 
 	; Move to next line, if possible
 	inc cur_tetromino_y
+	inc pos_changed	; Just assume it will fit
 	jsr test_tetromino_fits
 	bcc _fall_cont	; Fits, move on.
 
 	; Stone does not fit one row below: add it to the playfield, start a new stone
+	dec pos_changed	; Undo the "does fit assumption". Will still be > 0 if changed in the key handlers
 	dec cur_tetromino_y
 	jsr set_tetromino_in_pf
 	jsr check_harddrop
 	jsr check_lines
 	jsr new_tetromino
 	jsr wait_vbl
+	jsr draw_cur_tetromino
 	jmp _loop
 
 _fall_cont
-	jsr set_tetromino_in_pf
 	jsr wait_vbl
-	jsr draw_playfield
-	jsr remove_tetromino_from_pf
-
-	.ifdef DEBUG
-	; print out fall cnt
-	lda cur_fall_cnt
-	sta word1
-	lda #0
-	sta word1+1
-	set16i word2, vram+scr_w-3
-	ldy #4  ; 3 digits
-	jsr print_uint16_lp1
-
-	; print out tetromino pos
-	lda cur_tetromino_x
-	sta word1
-	lda #0
-	sta word1+1
-	set16i word2, vram+scr_w
-	ldy #4  ; 3 digits
-	jsr print_uint16_lp1
-
-	lda cur_tetromino_y
-	sta word1
-	lda #0
-	sta word1+1
-	set16i word2, vram+scr_w + 4
-	ldy #4  ; 3 digits
-	jsr print_uint16_lp1
-	.endif 
+	lda pos_changed
+	beq _pos_not_changed
+	jsr erase_last_tetromino
+	jsr draw_cur_tetromino
+_pos_not_changed
 
 	jmp _loop
 
@@ -530,7 +536,7 @@ _l1
 	push16m word1
 	push16m word2
 	jsr wait_vbl
-	jsr draw_playfield
+	jsr draw_playfield	; Ideally, we only redraw the line to be blinked!
 	jsr print_lines
 	pop16m word2
 	pop16m word1
@@ -575,6 +581,7 @@ _l2	lda (word2),y
 	dex
 	bne _move
 
+	jsr wait_vbl
 	jsr draw_playfield	; Draw playfield
 	pop16m word1
 	jmp _scanline		; see if we need to clear more lines
@@ -857,17 +864,18 @@ _w2	lda curkey
 handle_fall:
 	lda #1
 	sta is_harddrop
-_l	inc cur_tetromino_y
+	
+_l	lda cur_tetromino_y
+	sta last_tetromino_y	
+	inc cur_tetromino_y
 	jsr test_tetromino_fits
 	bcs _nofit
 
-	; Draw playfield
-	jsr set_tetromino_in_pf
-	jsr draw_playfield
-	jsr remove_tetromino_from_pf
-
-	; Wait a little
 	jsr wait_vbl
+	jsr erase_last_tetromino
+	jsr draw_cur_tetromino
+
+	; Wait a little more
 	jsr wait_vbl
 	jmp _l
 
@@ -883,6 +891,7 @@ handle_left:
 	dec cur_tetromino_x
 	jsr test_tetromino_fits
 	bcs _nofit
+	inc pos_changed
 	rts
 _nofit
 	inc cur_tetromino_x
@@ -892,6 +901,7 @@ handle_right:
 	inc cur_tetromino_x
 	jsr test_tetromino_fits
 	bcs _nofit
+	inc pos_changed
 	rts
 _nofit
 	dec cur_tetromino_x
@@ -901,6 +911,7 @@ handle_down:
 	inc cur_tetromino_y
 	jsr test_tetromino_fits
 	bcs _nofit
+	inc pos_changed
 	rts
 _nofit
 	dec cur_tetromino_y
@@ -916,6 +927,7 @@ handle_rotate:
 	jsr rotate_cur_left
 	jsr test_tetromino_fits
 	bcs _nofit
+	inc pos_changed
 	rts
 _nofit
 	set16i word1, screen_buf
@@ -1351,10 +1363,6 @@ set_tetromino_in_pf_elem  .macro
 _l  iny
 	.endm
 
-	.ifdef DEBUG
-tmp .reserve 2
-	.endif
-
 ; ---------------------
 ; set_tetromino_in_pf: Sets the current tetromino (cur_tetromino)
 ; in the playfield at (cur_tetromino_x, cur_tetromino_y).
@@ -1407,31 +1415,17 @@ _l  ldy #0
 
 	rts
 
-remove_tetromino_from_pf_elem  .macro
+
+draw_cur_tetromino_elem  .macro
 	lda (word2),y
 	beq _l
-	lda #0
 	sta (word1), y
 _l  iny
 	.endm
 
-; ---------------------
-; set_tetromino_in_pf: Removes the current tetromino (cur_tetromino) from
-; the playfield at (cur_tetromino_x, cur_tetromino_y).
-; No checks are performed whether it fits.
-; ---------------------
-; Input: -
-; Ouput: -
-; Invalidates:
-;    word1
-;    word2
-;    A, X
-; ---------------------
-; Input: -
-remove_tetromino_from_pf:
-	; compute pf address
-	set16i word1, playfield+2*(pf_w+4)+2	; 2-byte sentinels around the whole playfield
-	
+draw_cur_tetromino:
+	; compute vram address
+	set16i word1, vram_playfield
 	; add col offset
 	lda cur_tetromino_x
 	clc
@@ -1443,7 +1437,7 @@ remove_tetromino_from_pf:
 
 	; add row offset
 	lda cur_tetromino_y
-	jsr mulPlayfieldW
+	jsr mulScrW
 	txa
 	clc
 	adc word1
@@ -1452,16 +1446,77 @@ remove_tetromino_from_pf:
 	adc word1+1
 	sta word1+1
 
-	sub16i word1, (pf_w+4)+2	; compensate for origin being at (2,1)
+	sub16i word1, scr_w+2	; compensate for origin being at (2,1)
 	set16i word2, cur_tetromino
 
 	ldx #4  ; 4 rows
-_l  ldy #0
-	remove_tetromino_from_pf_elem
-	remove_tetromino_from_pf_elem
-	remove_tetromino_from_pf_elem
-	remove_tetromino_from_pf_elem
-	add16i word1, pf_w+4
+_l	ldy #0
+	draw_cur_tetromino_elem
+	draw_cur_tetromino_elem
+	draw_cur_tetromino_elem
+	draw_cur_tetromino_elem
+	add16i word1, scr_w
+	add16i word2, 4
+	dex
+	bne _l
+
+	rts
+
+
+erase_last_tetromino_elem  .macro
+	lda (word2),y
+	beq _l
+	lda #scr(' ')
+	sta (word1), y
+_l  iny
+	.endm
+
+; ---------------------
+; remove_tetromino_from_pf: Removes the current tetromino (cur_tetromino) from
+; the playfield at (cur_tetromino_x, cur_tetromino_y).
+; No checks are performed whether it fits.
+; ---------------------
+; Input: -
+; Ouput: -
+; Invalidates:
+;    word1
+;    word2
+;    A, X
+; ---------------------
+; Input: -
+erase_last_tetromino:
+	; compute vram address
+	set16i word1, vram_playfield
+	; add col offset
+	lda last_tetromino_x
+	clc
+	adc word1
+	sta word1
+	lda #0
+	adc word1+1
+	sta word1+1
+
+	; add row offset
+	lda last_tetromino_y
+	jsr mulScrW
+	txa
+	clc
+	adc word1
+	sta word1
+	tya
+	adc word1+1
+	sta word1+1
+
+	sub16i word1, 1*scr_w+2	; compensate for origin being at (2,1)
+	set16i word2, last_tetromino
+
+	ldx #4  ; 4 rows
+_l	ldy #0
+	erase_last_tetromino_elem
+	erase_last_tetromino_elem
+	erase_last_tetromino_elem
+	erase_last_tetromino_elem
+	add16i word1, scr_w
 	add16i word2, 4
 	dex
 	bne _l
@@ -1474,8 +1529,7 @@ _l  ldy #0
 
 ; Copy "next_tetromino" to cur_tetromino, and select new next tetromino
 ; Update stats and next_tetromino
-new_tetromino:
-
+new_tetromino:	
 	; Update stats
 	lda next_tetromino
 	asl
@@ -1526,7 +1580,7 @@ _done
 
 	; Update screen
 	jsr print_stats
-	jmp print_next_tetromino
+	jmp print_next_tetromino	
 	
 
 rotate_cur_left:
@@ -1570,9 +1624,6 @@ rotate_cur_left:
 	set16i word2, cur_tetromino
 	ldy #4*4
 	jmp copy_mem
-
-rotate_buf:
-	.reserve 16
 
 ; ********************************************************************
 ; *** Other routines
@@ -1757,6 +1808,47 @@ _multab
 	.word 24 * (pf_w+2+2)
 	.word 25 * (pf_w+2+2)
 
+; Multiply accumulator by scr_w
+; Input:
+;   A: to by multiplied (0 <= A < 25)
+; Output:
+;   X: LSB of A*scr_w
+;   Y: MSB of A*scr_w
+mulScrW:
+	asl
+	tax
+	lda _multab+1,x
+	tay
+	lda _multab,x
+	tax
+	rts
+_multab 
+	.word  0 * scr_w
+	.word  1 * scr_w
+	.word  2 * scr_w
+	.word  3 * scr_w
+	.word  4 * scr_w
+	.word  5 * scr_w
+	.word  6 * scr_w
+	.word  7 * scr_w
+	.word  8 * scr_w
+	.word  9 * scr_w
+	.word 10 * scr_w
+	.word 11 * scr_w
+	.word 12 * scr_w
+	.word 13 * scr_w
+	.word 14 * scr_w
+	.word 15 * scr_w
+	.word 16 * scr_w
+	.word 17 * scr_w
+	.word 18 * scr_w
+	.word 19 * scr_w
+	.word 20 * scr_w
+	.word 21 * scr_w
+	.word 22 * scr_w
+	.word 23 * scr_w
+	.word 24 * scr_w
+
 ; Wait for vertical blanking
 ; --------------------------
 ; Input: -
@@ -1893,22 +1985,12 @@ score:  .reserve 2
 lines:  .reserve 2
 stats:  .reserve 7*2    ; Same order as in "tetrominos" list
 lines_to_next_level	.reserve 1
-
 score_increments	.reserve 4*2	; score increments for 1, 2, 3, and 4 removed lines
-
 
 playfield:	.reserve (pf_w+2+2)*(pf_h+2+2) , scr('A')
 ; The following 2 fields are used for line blinking	
 pf_line_buf		.reserve pf_w+4
 pf_line_empty	.reserve pf_w+4, scr(' ')
-
-cur_fall_delay:		.reserve 1	; Current delay per line
-cur_fall_cnt:		.reserve 1	; fall count down; when 0, the tetromino falls down 1 line
-cur_tetromino_x:    .reserve 1
-cur_tetromino_y:    .reserve 1
-cur_tetromino:      .reserve 4*4    ; 16 bytes for data
-next_tetromino:     .reserve 1
-quit_flag			.reserve 1
 
 hiscores:
 	.word 1000, 10
