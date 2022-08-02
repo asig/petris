@@ -6,3 +6,4 @@ petris.sym
 screens.asm
 pe_screen_extractor
 pe_screen_extractor.exe
+build_info.i
