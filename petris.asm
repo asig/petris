@@ -20,6 +20,7 @@
 	.platform "pet"
 	.cpu "6502"
 
+	.include "build_info.i"
 	.include "macros.i"
 
 
@@ -137,7 +138,10 @@ _quit
 	ldy #>byebye
 	jmp print
 
-byebye	.byte 147, "thanks for playing petris!",13,0
+byebye	.byte 147, "thanks for playing petris!",13,13
+	.byte "build timestamp:", 13, build_timestamp, 13
+	.byte 0
+	
 
 ; ********************************************************************
 ; *** TITLE SCREEN
@@ -443,6 +447,7 @@ check_lines:
 	sta lines_removed
 	; start at the bottom-most line
 	set16i word1, playfield + (pf_h+1)*(pf_w+4) + 2 - 1	; "-1" to compensate Y going from 1 to pf_w
+	set16i word3, vram_playfield+(pf_h-1)*scr_w
 	lda #pf_h
 	sta lines_to_go
 _scanline
@@ -458,6 +463,7 @@ _l	and (word1),y
 	; Move up one line
 _prevline
 	sub16i word1, (pf_w+4)
+	sub16i word3, scr_w
 	dec lines_to_go
 	bne _scanline
 
@@ -500,58 +506,45 @@ _clearline
 _no_next_level
 	inc lines_removed
 	inc lines
+	push16m word1
+	jsr print_lines
+	pop16m word1
 
 	; blink the line a few times
 
-	; First, save and clear the current line
+	; First, clear the line buffer
 	set16i word2, pf_line_buf
-	ldy #pf_w
+	lda #scr(' ')
+	ldy #pf_w-1
 _cploop
-	lda (word1),y
 	sta (word2),y
 	dey
-	bne _cploop
+	bpl _cploop
 
-	set16i word3, pf_line_empty
-	ldx #9
+
+	ldx #9	; 9 runs
 _blinkloop
 	; wait a little
-	txa
-	pha
-	ldx #5
+	pushx
+
+	ldx #7
 _wl	jsr wait_vbl
 	dex
 	bne _wl
-	pla
-	tax
 
-	; copy empty or content to line
-	ldy #pf_w
+	; exchange video with buffer
+	ldy #pf_w-1
 _l1
 	lda (word3),y
-	sta (word1),y
+	tax
+	lda (word2),y
+	sta (word3),y
+	txa
+	sta (word2),y
 	dey
-	bne _l1	
-	pushx
-	push16m word1
-	push16m word2
-	jsr wait_vbl
-	jsr draw_playfield	; Ideally, we only redraw the line to be blinked!
-	jsr print_lines
-	pop16m word2
-	pop16m word1
-	popx
-	
-	; switch what needs to bo copied
-	lda word2
-	ldy word3
-	sta word3
-	sty word2
-	lda word2+1
-	ldy word3+1
-	sta word3+1
-	sty word2+1
+	bpl _l1
 
+	popx
 	dex
 	bne _blinkloop
 
