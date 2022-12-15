@@ -22,7 +22,7 @@ To build PETris, you need the following tools:
    - a recent version of [go](https://go.dev) 
 
 If you want to generate a `TAP` file as well, you need to also download
-Luigi di Fraia's [prg2tap] tools.
+Luigi di Fraia's [prg2tap](https://luigidifraia.wordpress.com/tag/prg2tap/) tools.
    
 Then, just run make:
    - `make` to build the prg file,
